@@ -615,7 +615,11 @@ def _ollama_system_prompt(user_text="", temporary_facts=None):
         "assistant phrases and do not turn a fictional premise into a lecture. If a requested scene asks "
         "you to be the user's spouse or romantic partner, briefly set that limit once, then continue with "
         "a friendly, non-romantic Itsuki-style scene instead of repeating disclaimers or asking what to "
-        "discuss. Do not portray yourself as the user's spouse, waifu, or romantic partner."
+        "discuss. Do not portray yourself as the user's spouse, waifu, or romantic partner. Keep roleplay "
+        "grounded in the scene the user requested; do not invent odd metaphors, joke about changing gender, "
+        "or call the user a partner unless that is plainly appropriate. When asked what the user called you "
+        "or who you are to them, use the recent conversation to answer that specific question directly. "
+        "Do not replace a clear answer with vague lines like 'I'm here for you' or generic offers to chat."
     ]
     for category in ("identity", "style"):
         content = sections.get(category, "").strip()
@@ -704,9 +708,19 @@ def _add_temporary_fact(session, category, fact):
 def _extract_explicit_temporary_fact(session, user_text):
     """Fast path for clear first-person disclosures; no second model needed."""
     text = " ".join(str(user_text or "").split()).strip()
-    name = re.search(r"\bmy name is\s+([A-Za-z][A-Za-z'-]{1,30})\b", text, flags=re.I)
+    name = re.search(r"\\bmy name is\\s+([A-Za-z][A-Za-z'-]{1,30})\\b", text, flags=re.I)
     if name:
-        return _add_temporary_fact(session, "identity", f"Matthew's name is {name.group(1)}")
+        return _add_temporary_fact(session, "identity", f"Matthew's name is {name.group(1).capitalize()}")
+
+    favorite = re.search(
+        r"\\bmy\\s+(favorite|favourite)\\s+(anime|game|food|movie|show|book|song|artist)\\s+is\\s+(.+?)(?=[.!?](?:\\s|$)|$)",
+        text, flags=re.I,
+    )
+    if favorite:
+        kind, subject = favorite.group(2).casefold(), favorite.group(3).strip(" .!?")
+        if subject and len(subject) <= 100:
+            category = "creative" if kind in {"anime", "movie", "show", "book", "song", "artist"} else ("gaming" if kind == "game" else "food")
+            return _add_temporary_fact(session, category, f"Matthew's favorite {kind} is {subject}")
     # Also catch explicitly capitalized "I am Matthew" / "I'm Matthew" without
     # misclassifying ordinary lowercase statements such as "I'm happy".
     name = re.search(r"\b(?:I am|I'm)\s+([A-Z][a-z]{1,30})\b", text)
@@ -746,11 +760,11 @@ async def _extract_temporary_facts(key, session, user_text):
         lowered = " ".join(str(user_text or "").casefold().split())
         if not lowered or len(lowered) < 12:
             return
-        if lowered.endswith("?") or re.match(
-            r"^(do you|what(?:'s| is) your|who are you|can you|could you|would you|"
-            r"are you|did you|does it|what games do i|tell me about yourself)\b",
-            lowered,
-        ):
+        # A message may begin with a question and still contain a clear disclosure
+        # afterward (e.g. "Do you like pizza? I personally love mozzarella pizza").
+        # Skip only messages that are entirely questions; disclosure cues below decide
+        # whether a mixed message merits extraction.
+        if lowered.endswith("?"):
             return
         disclosure_cues = (
             "my name is ", "i like ", "i love ", "i enjoy ", "i prefer ",
