@@ -206,6 +206,16 @@ def assess_answer_support(question, answer, evidence):
     evidence_terms = _content_tokens(evidence_text)
     question_terms = _content_tokens(question)
 
+    # Basic polarity check: shared words alone cannot support a negated claim.
+    negation_pattern = re.compile(r"\\b(?:not|never|without|neither|cannot)\\b", re.IGNORECASE)
+    if bool(negation_pattern.search(answer_text)) != bool(negation_pattern.search(evidence_text)):
+        return {
+            "status": "insufficient_overlap",
+            "overlap": 0.0,
+            "matched_terms": [],
+            "reason": "polarity_mismatch",
+        }
+
     # Numbers are often the most consequential unsupported details. If an answer
     # introduces a numeric value that does not occur in the extract, fail closed
     # for this lightweight check rather than letting topic-word overlap hide it.
