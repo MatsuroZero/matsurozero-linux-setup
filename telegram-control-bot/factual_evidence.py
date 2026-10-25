@@ -436,6 +436,22 @@ def assess_answer_support(question, answer, evidence):
     evidence_terms = non_numeric_terms(evidence_text)
     question_terms = non_numeric_terms(question)
 
+    # A source that merely mentions the same topic does not necessarily support
+    # an added causal explanation. If the answer asserts causation but the
+    # retrieved text has no explicit causal cue, fail closed as a warning.
+    causal_pattern = re.compile(
+        r"\b(?:because|because of|due to|caused by|causes?|therefore|thus|"
+        r"as a result|leads? to|resulting in|consequently)\b",
+        re.IGNORECASE,
+    )
+    if causal_pattern.search(answer_text) and not causal_pattern.search(evidence_text):
+        return {
+            "status": "insufficient_overlap",
+            "overlap": 0.0,
+            "matched_terms": [],
+            "reason": "causal_relation_not_explicit_in_evidence",
+        }
+
     # Basic polarity check: shared words alone cannot support a negated claim.
     negation_pattern = re.compile(r"\b(?:not|never|without|neither|cannot)\b", re.IGNORECASE)
     if bool(negation_pattern.search(answer_text)) != bool(negation_pattern.search(evidence_text)):
