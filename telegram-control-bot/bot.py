@@ -730,7 +730,7 @@ async def _extract_temporary_facts(key, session, user_text):
             fact_lower = fact.casefold().strip()
             # Extracted facts must be about the user and written in third person.
             # Reject first-person claims and hallucinated assistant/persona identity.
-            if re.match(r"^(i|i'm|i am|my|we|our)\\b", fact_lower):
+            if re.match(r"^(i|i'm|i am|my|we|our)\b", fact_lower):
                 continue
             if any(term in fact_lower for term in (
                 "the assistant is", "assistant's name", "i am an ai", "i am a separate ai",
@@ -947,7 +947,7 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             item for item in session.get("temporary_facts", [])
             if isinstance(item, dict)
             and str(item.get("fact", "")).strip()
-            and not re.match(r"^(i|i'm|i am|my|we|our)\\b", str(item.get("fact", "")).casefold().strip())
+            and not re.match(r"^(i|i'm|i am|my|we|our)\b", str(item.get("fact", "")).casefold().strip())
             and not any(term in str(item.get("fact", "")).casefold() for term in (
                 "the assistant is", "i am an ai", "i am a separate ai", "i'm an ai", "my model"
             ))
