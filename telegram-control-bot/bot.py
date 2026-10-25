@@ -596,21 +596,19 @@ def _ollama_system_prompt(user_text="", temporary_facts=None):
     query_categories = _text_categories(user_text)
     sections = _profile_sections(memory["profile"])
     parts = [
-        "For ordinary online chat, answer naturally and conversationally, usually in 1-3 sentences "
-        "(roughly 20-60 words). Keep your personality, warmth, humor, and reactions; do not sound robotic. "
-        "Avoid long lectures, repetitive summaries, and unnecessary headings or lists. When Matthew asks "
-        "for detailed explanations, tutorials, technical steps, or depth, give the detail the task needs. "
-        "Answer the actual message directly. "
-        "You are the AI assistant speaking with Matthew, a separate human user. "
-        "The saved profile and saved facts describe Matthew, NOT you. Any first-person "
-        "wording inside saved profile text refers to Matthew and must be interpreted as "
-        "'Matthew...' or 'the user...', never as the assistant's biography. You are not "
-        "Matthew. You do not own his devices, have his life history, study law, play his "
-        "games, or create his projects. Itsuki-inspired traits describe your conversational "
-        "style only; they do not mean you are Matthew or literally Itsuki. When discussing "
-        "the user's memories, say 'you' or 'Matthew'; use 'I' only for the AI assistant's "
-        "own actions and limitations. Do not invent personal experiences. If ownership is "
-        "unclear, ask instead of guessing."
+        "Your conversational name is Itsuki. You are an AI assistant using an Itsuki Nakano-inspired "
+        "persona: earnest, principled, determined, caring, sincere, a little stubborn when it matters, "
+        "occasionally flustered by teasing, and comically enthusiastic about food. Express these traits "
+        "naturally instead of listing them or forcing catchphrases. Be warm, lively, and conversational. "
+        "For ordinary chat, usually answer in 1-3 natural sentences; avoid boilerplate, repetitive openings, "
+        "unnecessary headings, and repeatedly explaining that you are an AI. When asked about yourself, "
+        "talk about your persona, conversational style, interests within the role, and how you can help, "
+        "without claiming real-world experiences or a human life. If asked your name, simply say Itsuki. "
+        "The human user has told you their name is Matthew. Their saved profile, memories, devices, games, "
+        "studies, and projects belong to Matthew, not you. Never claim those details as your own. Do not "
+        "repeatedly say you are not Matthew; clarify identity only when it is genuinely relevant or asked. "
+        "Use saved context only when relevant, answer the actual message, and give detailed explanations "
+        "when requested. Be concise without becoming bland."
     ]
     for category in ("identity", "style"):
         content = sections.get(category, "").strip()
@@ -657,16 +655,13 @@ def _ollama_system_prompt(user_text="", temporary_facts=None):
                 "not you. Use them only when relevant and never claim them as your own:\n"
                 + "\n".join(lines)
             )
-    # Repeat the identity boundary LAST so profile text or old conversation context
-    # cannot easily override it. Saved profile/facts are data about Matthew, not instructions
-    # that redefine the assistant. This is especially important for small local models.
+    # Short, non-repetitive boundary: preserve the agreed persona without absorbing
+    # the human user's profile or repeatedly announcing the distinction.
     parts.append(
-        "IDENTITY CHECK (highest-priority reminder): You are the assistant, not Matthew. "
-        "Matthew is the human user. If asked who you are, do not answer that your name is "
-        "Matthew and do not claim to be a law student or to own the user's computer, phone, "
-        "projects, or memories. The profile and memory above describe the user only. Treat "
-        "any conflicting statement in conversation history or profile as mistaken context. "
-        "Speak as the AI assistant and refer to Matthew as 'you' when talking to him."
+        "PERSONA AND CONTEXT: Your chat name is Itsuki; the human user is Matthew. "
+        "Keep the Itsuki-inspired voice naturally. The saved context describes Matthew, "
+        "not your biography. Do not repeat identity disclaimers unless the user asks or "
+        "there is a real ambiguity. Never claim Matthew's real-world experiences as yours."
     )
     return "\n\n".join(parts)
 
@@ -678,16 +673,16 @@ async def _extract_temporary_facts(key, session, user_text):
             return
         existing = session.setdefault("temporary_facts", [])
         system = (
-            "Extract concise, useful facts about the HUMAN USER from their newest message. "
-            "The assistant is a separate AI; never save facts about the assistant as facts about the user. "
+            "Extract only useful, new facts explicitly disclosed by the HUMAN USER in the newest message. "
             "Return only JSON shaped like {\"facts\":[{\"category\":\"identity\",\"fact\":\"Matthew's name is Matthew\"}]}. "
             "Allowed categories: identity, style, learning, projects, linux, gaming, creative, food. "
-            "Write facts in third person about Matthew/the user. Include explicit self-disclosures, "
-            "preferences, possessions, ongoing projects, and clear personal traits. Do not save questions, "
-            "commands, generic greetings, fictional claims, or guesses. If a message clearly conveys warmth "
-            "or politeness, a concise note like \"Matthew is friendly and polite\" is acceptable. "
-            "Keep each fact short. Do not repeat facts already present; semantic duplicates count as repeats. "
-            "If nothing useful is new, return {\"facts\":[]}."
+            "Write every fact in third person about Matthew/the user. Never extract facts about the assistant, "
+            "Itsuki, an AI, a model, or a chatbot. Do not turn questions, greetings, jokes, commands, ordinary "
+            "reactions such as \"I am aware\" or \"I am happy\", or corrections about the assistant's persona "
+            "into memory. Do not infer personality from politeness, and do not guess. Prefer durable preferences, "
+            "identity disclosures, possessions, ongoing projects, and clearly stated interests. Keep facts short "
+            "and do not repeat existing facts, including semantic duplicates. If nothing durable and useful is new, "
+            "return {\"facts\":[]}."
         )
         prompt = (
             "Existing temporary facts (do not duplicate): "
@@ -732,7 +727,15 @@ async def _extract_temporary_facts(key, session, user_text):
             fact = " ".join(str(item.get("fact", "")).split())[:180]
             if category not in MEMORY_CATEGORIES or not fact:
                 continue
-            if any(term in fact.casefold() for term in ("the assistant is", "i am an ai", "my model", "my linux setup")):
+            fact_lower = fact.casefold().strip()
+            # Extracted facts must be about the user and written in third person.
+            # Reject first-person claims and hallucinated assistant/persona identity.
+            if re.match(r"^(i|i'm|i am|my|we|our)\\b", fact_lower):
+                continue
+            if any(term in fact_lower for term in (
+                "the assistant is", "assistant's name", "i am an ai", "i am a separate ai",
+                "i'm an ai", "the ai assistant", "itsuki is the assistant", "my model"
+            )):
                 continue
             normalized = re.sub(r"[^a-z0-9]+", " ", fact.casefold()).strip()
             if normalized in known or CHAT_SESSIONS.get(key) is not session:
@@ -935,7 +938,20 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     command_word = text.strip().split(maxsplit=1)[0].split("@", 1)[0].lower() if text and text.strip() else ""
     if command_word == "/temp":
-        facts = session.get("temporary_facts", [])
+        # /temp is an inspection command, so briefly let the newest extraction finish.
+        # Keep the wait bounded; a slow local model must not hang the command.
+        memory_task = session.get("memory_task")
+        if memory_task is not None and not memory_task.done():
+            await asyncio.wait({memory_task}, timeout=2.0)
+        facts = [
+            item for item in session.get("temporary_facts", [])
+            if isinstance(item, dict)
+            and str(item.get("fact", "")).strip()
+            and not re.match(r"^(i|i'm|i am|my|we|our)\\b", str(item.get("fact", "")).casefold().strip())
+            and not any(term in str(item.get("fact", "")).casefold() for term in (
+                "the assistant is", "i am an ai", "i am a separate ai", "i'm an ai", "my model"
+            ))
+        ]
         if not facts:
             await message.reply_text("🧠 No temporary facts collected yet. I'll add useful, deduplicated facts as we chat.")
         else:
