@@ -1,6 +1,6 @@
 # Local Ollama quality and latency benchmark
 
-This optional benchmark compares twelve general-purpose prompts across local
+This optional benchmark compares eighteen general-purpose prompts, including evidence-grounding and abstention cases across local
 Ollama models. It records response latency, Ollama-reported duration, model
 load time, token counts, estimated generation throughput, raw answers, and
 transparent heuristic checks for obvious requirements.
