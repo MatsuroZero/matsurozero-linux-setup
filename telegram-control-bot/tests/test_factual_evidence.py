@@ -155,6 +155,31 @@ class EvidenceFormattingTests(unittest.TestCase):
         )
         self.assertEqual(result["status"], "candidate_supported")
 
+    def test_unsupported_numeric_detail_is_flagged_even_when_topic_words_match(self):
+        evidence = {
+            "title": "Canberra",
+            "excerpt": "Canberra is the capital city of Australia.",
+        }
+        result = factual_evidence.assess_answer_support(
+            "What is the capital of Australia?",
+            "Canberra is Australia's capital and has a population of 900 million.",
+            evidence,
+        )
+        self.assertEqual(result["status"], "insufficient_overlap")
+        self.assertIn("900", result["unsupported_numbers"])
+
+    def test_numbers_present_in_evidence_are_not_flagged(self):
+        evidence = {
+            "title": "Water",
+            "excerpt": "Water boils at 100 °C at standard atmospheric pressure.",
+        }
+        result = factual_evidence.assess_answer_support(
+            "At what temperature does water boil?",
+            "Water boils at 100 °C.",
+            evidence,
+        )
+        self.assertEqual(result["status"], "candidate_supported")
+
     def test_empty_answer_is_unavailable(self):
         result = factual_evidence.assess_answer_support(
             "What is the capital of Australia?", "", {
