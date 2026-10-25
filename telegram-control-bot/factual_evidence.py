@@ -502,6 +502,37 @@ def _trusted_evidence_records(evidence):
     return records
 
 
+
+def detect_evidence_conflicts(evidence):
+    """Flag obvious numeric or polarity disagreement across retrieved sources.
+
+    This conservative lexical check is a warning signal, not semantic verification.
+    """
+    records = _trusted_evidence_records(evidence)
+    conflicts = []
+    negation = re.compile(r"\\b(?:not|never|without|neither|cannot|no)\\b", re.IGNORECASE)
+    number_pattern = re.compile(r"(?<![A-Za-z])(?:\\d[\\d,]*(?:\\.\\d+)?%?)(?![A-Za-z])")
+    for index, left in enumerate(records):
+        left_text = str(left.get("title") or "") + " " + str(left.get("excerpt") or "")
+        left_terms = _content_tokens(left_text)
+        for right in records[index + 1:]:
+            right_text = str(right.get("title") or "") + " " + str(right.get("excerpt") or "")
+            right_terms = _content_tokens(right_text)
+            shared = left_terms & right_terms
+            overlap = len(shared) / max(1, min(len(left_terms), len(right_terms)))
+            if len(shared) < 3 or overlap < 0.6:
+                continue
+            polarity_differs = bool(negation.search(left_text)) != bool(negation.search(right_text))
+            left_numbers = set(number_pattern.findall(left_text))
+            right_numbers = set(number_pattern.findall(right_text))
+            numeric_disagreement = bool(left_numbers and right_numbers and left_numbers.isdisjoint(right_numbers))
+            if polarity_differs or numeric_disagreement:
+                conflicts.append({
+                    "sources": [left.get("title", "Source 1"), right.get("title", "Source 2")],
+                    "reason": "opposing polarity" if polarity_differs else "different numeric values",
+                })
+    return conflicts
+
 def format_multi_source_evidence_for_prompt(evidence):
     """Format multiple retrieved sources as untrusted candidate evidence."""
     records = _trusted_evidence_records(evidence)
