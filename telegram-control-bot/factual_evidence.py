@@ -7,6 +7,7 @@ the model to abstain when the extract does not answer the question.
 import asyncio
 import copy
 import html
+from collections import OrderedDict
 import re
 import time
 from urllib.parse import urlparse
@@ -20,7 +21,7 @@ MAX_EXTRACT_CHARS = 1200
 EVIDENCE_CACHE_TTL_SECONDS = 180.0
 EVIDENCE_MISS_CACHE_TTL_SECONDS = 20.0
 EVIDENCE_CACHE_MAX_ENTRIES = 128
-_EVIDENCE_CACHE = {}
+_EVIDENCE_CACHE = OrderedDict()
 
 
 def should_retrieve_factual_evidence(question):
@@ -464,8 +465,10 @@ async def retrieve_multi_source_evidence(question):
     now = time.monotonic()
     cached = _EVIDENCE_CACHE.get(cache_key)
     if cached and cached[0] > now:
-        _EVIDENCE_CACHE.move_to_end(cache_key) if hasattr(_EVIDENCE_CACHE, "move_to_end") else None
+        _EVIDENCE_CACHE.move_to_end(cache_key)
         return copy.deepcopy(cached[1])
+    if cached:
+        del _EVIDENCE_CACHE[cache_key]
     result = await _retrieve_multi_source_evidence_uncached(question)
     ttl = EVIDENCE_CACHE_TTL_SECONDS if result else EVIDENCE_MISS_CACHE_TTL_SECONDS
     _EVIDENCE_CACHE[cache_key] = (now + ttl, copy.deepcopy(result))
