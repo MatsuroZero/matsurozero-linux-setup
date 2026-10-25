@@ -131,6 +131,30 @@ class EvidenceFormattingTests(unittest.TestCase):
         self.assertEqual(result["status"], "insufficient_overlap")
         self.assertNotIn("sydney", result["matched_terms"])
 
+    def test_unrelated_claim_does_not_pass_due_to_shared_topic_words(self):
+        evidence = {
+            "title": "Canberra",
+            "excerpt": "Canberra is the capital city of Australia.",
+        }
+        result = factual_evidence.assess_answer_support(
+            "What is the capital of Australia?",
+            "Mars has two moons named Phobos and Deimos.",
+            evidence,
+        )
+        self.assertEqual(result["status"], "insufficient_overlap")
+
+    def test_paraphrase_with_supported_answer_entity_can_pass(self):
+        evidence = {
+            "title": "Canberra",
+            "excerpt": "Canberra is the capital city of Australia.",
+        }
+        result = factual_evidence.assess_answer_support(
+            "What is the capital of Australia?",
+            "Australia's capital city is Canberra.",
+            evidence,
+        )
+        self.assertEqual(result["status"], "candidate_supported")
+
     def test_empty_answer_is_unavailable(self):
         result = factual_evidence.assess_answer_support(
             "What is the capital of Australia?", "", {
