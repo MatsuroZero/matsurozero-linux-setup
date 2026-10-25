@@ -58,6 +58,13 @@ class EvidenceRoutingTests(unittest.TestCase):
             factual_evidence.should_retrieve_factual_evidence("What is " + "x" * 300)
         )
 
+    def test_general_educational_question_with_you_is_not_overfiltered(self):
+        self.assertTrue(
+            factual_evidence.should_retrieve_factual_evidence(
+                "How do you calculate the speed of light?"
+            )
+        )
+
 
 class EvidenceFormattingTests(unittest.TestCase):
     def test_prompt_formats_excerpt_as_untrusted_candidate_evidence(self):
@@ -79,6 +86,7 @@ class EvidenceFormattingTests(unittest.TestCase):
         })
         self.assertIn("Pure water boils at 100 °C.", prompt)
         self.assertNotIn("<b>", prompt)
+        self.assertIn("Article extract:", prompt)
 
     def test_source_footer_rejects_non_wikipedia_urls(self):
         footer = factual_evidence.format_source_attribution({
@@ -92,11 +100,65 @@ class EvidenceFormattingTests(unittest.TestCase):
             "title": "Canberra",
             "url": "https://en.wikipedia.org/?curid=123",
         })
-        self.assertIn("Reference: Wikipedia — Canberra", footer)
+        self.assertIn("Potential reference", footer)
+        self.assertIn("not independently verified", footer)
+        self.assertIn("Wikipedia — Canberra", footer)
         self.assertIn("https://en.wikipedia.org/?curid=123", footer)
 
 
 class RetrievalFailureTests(unittest.IsolatedAsyncioTestCase):
+    async def test_retrieval_uses_article_extracts_and_selects_top_ranked_page(self):
+        class FakeResponse:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {
+                    "query": {
+                        "pages": {
+                            "456": {
+                                "pageid": 456,
+                                "title": "Sydney",
+                                "index": 2,
+                                "extract": "Sydney is a city in Australia.",
+                            },
+                            "123": {
+                                "pageid": 123,
+                                "title": "Canberra",
+                                "index": 1,
+                                "extract": "Canberra is the capital of Australia.",
+                            },
+                        }
+                    }
+                }
+
+        class FakeClient:
+            def __init__(self, *args, **kwargs):
+                self.request = None
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *args):
+                return False
+
+            async def get(self, url, params):
+                self.request = (url, params)
+                self.assertion_params = params
+                return FakeResponse()
+
+        client = FakeClient()
+        with patch.object(factual_evidence.httpx, "AsyncClient", return_value=client):
+            result = await factual_evidence.retrieve_wikipedia_evidence(
+                "What is the capital of Australia?"
+            )
+
+        self.assertEqual(result["title"], "Canberra")
+        self.assertEqual(result["excerpt"], "Canberra is the capital of Australia.")
+        self.assertEqual(result["url"], "https://en.wikipedia.org/?curid=123")
+        self.assertEqual(client.assertion_params["prop"], "extracts")
+        self.assertEqual(client.assertion_params["explaintext"], 1)
+
     async def test_network_failure_falls_back_to_normal_chat(self):
         class BrokenClient:
             def __init__(self, *args, **kwargs):
