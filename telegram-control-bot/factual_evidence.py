@@ -189,6 +189,25 @@ def _content_tokens(text):
     }
 
 
+def _unsupported_capitalized_terms(answer, evidence_text):
+    """Find capitalized answer terms absent from the candidate evidence.
+
+    This conservative check is only a warning heuristic. It ignores common
+    sentence starters to reduce false alarms, and it does not recognize every
+    named entity or establish that a matching name is factually correct.
+    """
+    common_starters = {
+        "the", "this", "that", "these", "those", "there", "here", "however",
+        "also", "according", "because", "when", "while", "although", "yes", "no",
+    }
+    evidence_terms = {term.casefold() for term in re.findall(r"\\b[A-Z][a-z]{2,}\\b", evidence_text)}
+    answer_terms = {
+        term for term in re.findall(r"\\b[A-Z][a-z]{2,}\\b", str(answer or ""))
+        if term.casefold() not in common_starters
+    }
+    return sorted(term for term in answer_terms if term.casefold() not in evidence_terms)
+
+
 def assess_answer_support(question, answer, evidence):
     """Estimate lexical support; this is not a truth or contradiction detector.
 
@@ -230,6 +249,17 @@ def assess_answer_support(question, answer, evidence):
             "matched_terms": [],
             "unsupported_numbers": unsupported_numbers[:8],
         }
+    # Names absent from the extract are high-risk additions. This is a
+    # conservative warning signal, not general named-entity recognition.
+    unsupported_names = _unsupported_capitalized_terms(answer_text, evidence_text)
+    if unsupported_names:
+        return {
+            "status": "insufficient_overlap",
+            "overlap": 0.0,
+            "matched_terms": [],
+            "unsupported_named_entities": unsupported_names[:8],
+        }
+
     # Question words alone should not make an answer appear supported.
     claim_terms = answer_terms - question_terms
     if not claim_terms:
