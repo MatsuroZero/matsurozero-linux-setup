@@ -61,11 +61,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await guard(update):
         return
     await update.effective_message.reply_text(
-        "🖥️ CACHYOS CONTROL CENTER\\n"
-        "━━━━━━━━━━━━━━━━━━\\n"
-        "Welcome back! Your CachyOS control room is ready.\\n\\n"
+        "🖥️ CACHYOS CONTROL CENTER\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+        "Welcome back! Your CachyOS control room is ready.\n\n"
         "Use /menu to open the interactive dashboard for system health, "
-        "services, Docker, network, and local dashboards.\\n\\n"
+        "services, Docker, network, and local dashboards.\n\n"
         "Need the full command guide? Use /help.",
         reply_markup=InlineKeyboardMarkup([[
             InlineKeyboardButton("🧭 Open control menu", callback_data="menu:home")
@@ -105,15 +105,15 @@ def menu_keyboard(section=None):
 
 
 MENU_HOME_TEXT = (
-    "🍱 IT'S ITSUKI! WELCOME BACK!\\n"
-    "━━━━━━━━━━━━━━━━━━\\n"
+    "🍱 IT'S ITSUKI! WELCOME BACK!\n"
+    "━━━━━━━━━━━━━━━━━━\n"
     "I've got your CachyOS control room ready. Your system health, "
     "Serpantinum desktop, services, Docker projects, network, and local "
-    "dashboards are gathered here.\\n\\n"
+    "dashboards are gathered here.\n\n"
     "I know you like understanding how the pieces of your setup fit together, "
-    "so I've kept the controls clearly grouped. Choose a panel below!\\n\\n"
+    "so I've kept the controls clearly grouped. Choose a panel below!\n\n"
     "And please check which project you're touching before stopping a container, okay? "
-    "I made the buttons clear for a reason. 🍙\\n\\n"
+    "I made the buttons clear for a reason. 🍙\n\n"
     "🔐 Private access enabled"
 )
 
@@ -232,24 +232,7 @@ async def menu_page_text(action):
         return "\n".join(lines)
 
     if action == "docker":
-        lines = ["🐳 Approved container status", ""]
-        for name, container in DOCKER_ALLOWLIST.items():
-            try:
-                result = subprocess.run(
-                    [
-                        "docker", "inspect", "--format",
-                        "{{.State.Status}}", container,
-                    ],
-                    capture_output=True, text=True, timeout=5, check=False
-                )
-                state = (
-                    result.stdout.strip() if result.returncode == 0
-                    else "unavailable"
-                )
-            except (OSError, subprocess.TimeoutExpired):
-                state = "unable to check"
-            lines.append(f"{name}: {state or 'unknown'}")
-        return "\n".join(lines)
+        return docker_list_text()
 
     if action == "links":
         return (
@@ -263,45 +246,45 @@ async def menu_page_text(action):
 
     if action == "help":
         return (
-            "📖 CACHYOS CONTROL BOT | COMMAND GUIDE\\n"
-            "━━━━━━━━━━━━━━━━━━\\n\\n"
-            "🧭 START HERE\\n"
-            "/start  Welcome and a shortcut to the menu\\n"
-            "/menu   Open the interactive control dashboard\\n"
-            "/help   Show this complete command guide\\n\\n"
-            "📊 SYSTEM\\n"
-            "/status  CPU, load, memory, storage, and uptime\\n"
-            "/cpu     CPU utilization and 1/5/15-minute load\\n"
-            "/ram     RAM availability and swap usage\\n"
-            "/disk    Root plus sda1/sda2 partition storage\\n"
-            "/temps   Read available hardware temperature sensors\\n"
-            "/top     Show the busiest processes by CPU and memory\\n"
-            "/uptime  Show uptime and the last boot time\\n"
-            "/network Network counters and interface states\\n\\n"
-            "⚙️ SYSTEMD SERVICES\\n"
-            "/services  List supported services and current state\\n"
-            "/service NAME status  Check one service\\n"
-            "/service NAME start   Start a service\\n"
-            "/service NAME stop    Stop a service (confirmation required)\\n"
-            "/service NAME restart Restart a service (confirmation required)\\n"
-            "Run /services for the exact supported service names.\\n\\n"
-            "🐳 DOCKER\\n"
-            "/docker  List containers, readable aliases, and states\\n"
-            "/docker ALIAS status   Inspect one approved container\\n"
-            "/docker ALIAS start    Start one approved container\\n"
-            "/docker ALIAS stop     Stop one approved container (confirm first)\\n"
-            "/docker ALIAS restart  Restart one approved container (confirm first)\\n"
-            "/docker project NAME status   Show a Compose project's containers\\n"
-            "/docker project NAME start    Start a configured Compose project\\n"
-            "/docker project NAME stop     Stop a project (confirmation required)\\n"
-            "/docker project NAME restart  Restart a project (confirmation required)\\n"
-            "Project names: odysseus, uptime-kuma, localnexus.\\n"
-            "Use /docker to see aliases and exact Docker container names.\\n\\n"
-            "🔗 DASHBOARDS & POWER\\n"
-            "/links  Show local dashboard URLs without credentials\\n"
-            "/power  Open lock, suspend, reboot, and shutdown controls\\n"
-            "Power actions require confirmation and expire after 60 seconds.\\n\\n"
-            "🔒 SECURITY\\n"
+            "📖 CACHYOS CONTROL BOT | COMMAND GUIDE\n"
+            "━━━━━━━━━━━━━━━━━━\n\n"
+            "🧭 START HERE\n"
+            "/start  Welcome and a shortcut to the menu\n"
+            "/menu   Open the interactive control dashboard\n"
+            "/help   Show this complete command guide\n\n"
+            "📊 SYSTEM\n"
+            "/status  CPU, load, memory, storage, and uptime\n"
+            "/cpu     CPU utilization and 1/5/15-minute load\n"
+            "/ram     RAM availability and swap usage\n"
+            "/disk    Root plus sda1/sda2 partition storage\n"
+            "/temps   Read available hardware temperature sensors\n"
+            "/top     Show the busiest processes by CPU and memory\n"
+            "/uptime  Show uptime and the last boot time\n"
+            "/network Network counters and interface states\n\n"
+            "⚙️ SYSTEMD SERVICES\n"
+            "/services  List supported services and current state\n"
+            "/service NAME status  Check one service\n"
+            "/service NAME start   Start a service\n"
+            "/service NAME stop    Stop a service (confirmation required)\n"
+            "/service NAME restart Restart a service (confirmation required)\n"
+            "Run /services for the exact supported service names.\n\n"
+            "🐳 DOCKER\n"
+            "/docker  List containers, readable aliases, and states\n"
+            "/docker ALIAS status   Inspect one approved container\n"
+            "/docker ALIAS start    Start one approved container\n"
+            "/docker ALIAS stop     Stop one approved container (confirm first)\n"
+            "/docker ALIAS restart  Restart one approved container (confirm first)\n"
+            "/docker project NAME status   Show a Compose project's containers\n"
+            "/docker project NAME start    Start a configured Compose project\n"
+            "/docker project NAME stop     Stop a project (confirmation required)\n"
+            "/docker project NAME restart  Restart a project (confirmation required)\n"
+            "Project names: odysseus, uptime-kuma, localnexus.\n"
+            "Use /docker to see aliases and exact Docker container names.\n\n"
+            "🔗 DASHBOARDS & POWER\n"
+            "/links  Show local dashboard URLs without credentials\n"
+            "/power  Open lock, suspend, reboot, and shutdown controls\n"
+            "Power actions require confirmation and expire after 60 seconds.\n\n"
+            "🔒 SECURITY\n"
             "Only the configured Telegram user ID is authorized. Service and Docker "
             "actions use fixed allowlists; arbitrary shell commands are not accepted."
         )
@@ -360,28 +343,8 @@ async def menu_callback(update, context):
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await guard(update):
         return
-
-    message = (
-        "PC CONTROL BOT\\n\\n"
-        "SYSTEM\\n"
-        "/status - System status\\n"
-        "/cpu - CPU information\\n"
-        "/ram - Memory usage\\n"
-        "/disk - Disk usage\\n\\n"
-        "SERVICES\\n"
-        "/services - List allowed services\\n"
-        "/service - Service controls\\n\\n"
-        "DOCKER\\n"
-        "/docker - Container controls\\n\\n"
-        "POWER\\n"
-        "/power - Lock, suspend, reboot or shut down\\n"
-        "Power actions require confirmation.\\n\\n"
-        "OTHER\\n"
-        "/links - Open dashboards and links\\n"
-        "/menu - Open the interactive menu\\n"
-        "/help - Show this help message"
-    )
-    await update.effective_message.reply_text(message)
+    message = await menu_page_text("help")
+    await update.effective_message.reply_text((message or "Help is unavailable.")[:4000])
 
 
 async def links_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -389,12 +352,12 @@ async def links_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await guard(update):
         return
     await update.effective_message.reply_text(
-        "🔗 LOCAL DASHBOARDS\\n"
-        "━━━━━━━━━━━━━━━━━━\\n\\n"
-        "🖥️ System dashboard\\nhttp://marwan-pc.local:7171/login\\n\\n"
-        "🧠 Odysseus\\nhttp://marwan-pc.local:7011/\\n\\n"
-        "🎬 Jellyfin\\nhttp://marwan-pc.local:8096/\\n\\n"
-        "📡 Uptime Kuma\\nhttp://marwan-pc.local:3001/\\n\\n"
+        "🔗 LOCAL DASHBOARDS\n"
+        "━━━━━━━━━━━━━━━━━━\n\n"
+        "🖥️ System dashboard\nhttp://marwan-pc.local:7171/login\n\n"
+        "🧠 Odysseus\nhttp://marwan-pc.local:7011/\n\n"
+        "🎬 Jellyfin\nhttp://marwan-pc.local:8096/\n\n"
+        "📡 Uptime Kuma\nhttp://marwan-pc.local:3001/\n\n"
         "🔐 For security, this command never displays usernames or passwords."
     )
 
@@ -449,7 +412,7 @@ def disk_usage_report() -> str:
         pass
 
     if not selected:
-        return "💾 Storage\\nRoot filesystem: unavailable"
+        return "💾 Storage\nRoot filesystem: unavailable"
 
     lines = ["💾 STORAGE & PARTITIONS", ""]
     for name, item in sorted(
@@ -471,18 +434,18 @@ def disk_usage_report() -> str:
             free_gib = usage.free / 1024**3
             percent = usage.used / usage.total * 100 if usage.total else 0
             lines.append(
-                f"📀 {name} [{item['fstype']}]\\n"
-                f"   Mount: {mount_text}\\n"
-                f"   Used: {used_gib:.1f} / {total_gib:.1f} GiB ({percent:.1f}%)\\n"
+                f"📀 {name} [{item['fstype']}]\n"
+                f"   Mount: {mount_text}\n"
+                f"   Used: {used_gib:.1f} / {total_gib:.1f} GiB ({percent:.1f}%)\n"
                 f"   Free: {free_gib:.1f} GiB"
             )
         else:
             lines.append(
-                f"📀 {name} [{item['fstype']}]\\n"
-                f"   Mount: {mount_text}\\n"
+                f"📀 {name} [{item['fstype']}]\n"
+                f"   Mount: {mount_text}\n"
                 f"   Capacity: {item['size'] / 1024**3:.1f} GiB"
             )
-    return "\\n\\n".join(lines)
+    return "\n\n".join(lines)
 
 
 def system_status() -> str:
@@ -491,14 +454,14 @@ def system_status() -> str:
     load = os.getloadavg()
 
     return (
-        "🖥️ CachyOS PC Status\\n\\n"
-        f"CPU usage: {psutil.cpu_percent(interval=0.5):.1f}%\\n"
+        "🖥️ CachyOS PC Status\n\n"
+        f"CPU usage: {psutil.cpu_percent(interval=0.5):.1f}%\n"
         f"CPU load (1/5/15 min): "
-        f"{load[0]:.2f} / {load[1]:.2f} / {load[2]:.2f}\\n\\n"
+        f"{load[0]:.2f} / {load[1]:.2f} / {load[2]:.2f}\n\n"
         f"RAM: {memory.used / 1024**3:.2f} / "
-        f"{memory.total / 1024**3:.2f} GiB ({memory.percent:.1f}%)\\n"
-        f"RAM available: {memory.available / 1024**3:.2f} GiB\\n\\n"
-        f"{disk_usage_report()}\\n\\n"
+        f"{memory.total / 1024**3:.2f} GiB ({memory.percent:.1f}%)\n"
+        f"RAM available: {memory.available / 1024**3:.2f} GiB\n\n"
+        f"{disk_usage_report()}\n\n"
         f"Uptime: {uptime}"
     )
 
@@ -594,13 +557,7 @@ async def service_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) != 2:
         await update.effective_message.reply_text(
             "Usage: /service <name> <status|start|stop|restart>\\n"
-            "Run /services to see supported service names."\n        )
-        return
-
-    name, action = (arg.lower() for arg in context.args)
-    if name not in SERVICE_ALLOWLIST:
-        await update.effective_message.reply_text(
-            "Service not allowed. Use /services to see the approved list."
+            "Run /services to see supported service names."
         )
         return
     if action not in {"status", "start", "stop", "restart"}:
@@ -723,14 +680,14 @@ def docker_list_text() -> str:
     ]
     try:
         result = subprocess.run(
-            ["docker", "ps", "-a", "--format", "{{.Names}}\\t{{.Status}}\\t{{.Image}}"],
+            ["docker", "ps", "-a", "--format", "{{.Names}}\t{{.Status}}\t{{.Image}}"],
             capture_output=True, text=True, timeout=10, check=False,
         )
         if result.returncode != 0:
             raise RuntimeError(result.stderr.strip() or "Docker command failed")
         rows = {}
         for line in result.stdout.splitlines():
-            parts = line.split("\\t", 2)
+            parts = line.split("\t", 2)
             if len(parts) == 3:
                 rows[parts[0].lstrip("/")] = (parts[1], parts[2])
         if not rows:
@@ -753,7 +710,7 @@ def docker_list_text() -> str:
         "Use the Alias value, not the long Docker-generated name.",
         "Stop/restart actions ask for confirmation.",
     ])
-    return "\\n".join(lines)
+    return "\n".join(lines)
 
 
 async def docker_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -768,7 +725,7 @@ async def docker_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if len(args) != 3:
             await update.effective_message.reply_text(
                 "Usage: /docker project <odysseus|uptime-kuma|localnexus> "
-                "<status|start|stop|restart>\\nRun /docker to see project aliases."
+                "<status|start|stop|restart>\nRun /docker to see project aliases."
             )
             return
         _, name, action = args
@@ -798,10 +755,10 @@ async def docker_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         args = args[1:]
     if len(args) != 2:
         await update.effective_message.reply_text(
-            "Usage:\\n/docker  List projects and container aliases\\n"
-            "/docker <alias> <status|start|stop|restart>\\n"
-            "/docker container <alias> <status|start|stop|restart>\\n"
-            "/docker project <name> <status|start|stop|restart>\\n"
+            "Usage:\n/docker  List projects and container aliases\n"
+            "/docker <alias> <status|start|stop|restart>\n"
+            "/docker container <alias> <status|start|stop|restart>\n"
+            "/docker project <name> <status|start|stop|restart>\n"
             "Run /docker for the exact alias names."
         )
         return
@@ -854,10 +811,10 @@ async def perform_docker_project_action(update, name: str, action: str):
             )
             if result.returncode == 0:
                 detail = result.stdout.strip()
-                message = f"🐳 Compose project: {name}\\nAction: {action}\\n\\n{detail or 'Command completed successfully.'}"
+                message = f"🐳 Compose project: {name}\nAction: {action}\n\n{detail or 'Command completed successfully.'}"
             else:
                 detail = result.stderr.strip() or result.stdout.strip() or f"exit code {result.returncode}"
-                message = f"Could not {action} Compose project '{name}':\\n{detail[:900]}"
+                message = f"Could not {action} Compose project '{name}':\n{detail[:900]}"
         except (OSError, subprocess.TimeoutExpired) as exc:
             message = f"Compose project action failed: {str(exc)[:500]}"
     if update.callback_query:
@@ -884,7 +841,7 @@ async def perform_docker_action(update, name: str, action: str):
         if result.returncode == 0:
             detail = result.stdout.strip()
             if action == "status":
-                message = f"🐳 CONTAINER STATUS\\nAlias: {name}\\nDocker name: {container}\\n{detail or 'unknown status'}"
+                message = f"🐳 CONTAINER STATUS\nAlias: {name}\nDocker name: {container}\n{detail or 'unknown status'}"
             else:
                 message = f"✅ Requested {action} for '{name}' ({container})."
         else:
