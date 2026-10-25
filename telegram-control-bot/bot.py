@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import httpx
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Thread
 import os
@@ -50,6 +51,15 @@ LINK_CREDENTIALS = {
     ),
 }
 PIN_ENTRY = 1
+
+# Ollama runs locally on the CachyOS host. Memory is stored outside the Git repo.
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/")
+OLLAMA_TIMEOUT = max(30.0, float(os.getenv("OLLAMA_TIMEOUT", "180")))
+OLLAMA_MEMORY_PATH = Path(os.getenv(
+    "OLLAMA_MEMORY_PATH",
+    str(Path.home() / ".local" / "share" / "telegram-control-bot" / "ollama_memory.json"),
+))
+CHAT_SESSIONS = {}
 
 logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
@@ -303,13 +313,20 @@ async def menu_page_text(action):
             "/docker project NAME restart  Restart a project (confirmation required)\n"
             "Project names: odysseus, uptime-kuma, localnexus.\n"
             "Use /docker to see aliases and exact Docker container names.\n\n"
-            "🔗 DASHBOARDS & POWER\n"
+            "🔗 DASHBOARDS, POWER & LOCAL AI\n"
             "/links  Show dashboard URLs; credentials require a PIN\n"
             "/power  Open lock, suspend, reboot, and shutdown controls\n"
+            "/chat   Start a private Ollama chat and choose an installed model\n"
+            "/bye    End the active Ollama chat\n"
+            "/memory Show persistent Ollama memory\n"
+            "/remember <fact> Save a detail for future Ollama chats\n"
+            "/forget <text> Remove matching saved details\n"
             "Power actions require confirmation and expire after 60 seconds.\n\n"
             "🔒 SECURITY\n"
             "Only the configured Telegram user ID is authorized. Service and Docker "
-            "actions use fixed allowlists; arbitrary shell commands are not accepted."
+            "actions use fixed allowlists; arbitrary shell commands are not accepted. "
+            "During Ollama chat, all other bot commands and menu callbacks are blocked "
+            "until /bye."
         )
 
     return None
@@ -444,6 +461,361 @@ async def credentials_pin_handler(update: Update, context: ContextTypes.DEFAULT_
     if chat_id is not None:
         await context.bot.send_message(chat_id=chat_id, text="\n".join(lines))
     return ConversationHandler.END
+
+
+
+def _chat_key(update: Update):
+    if update.effective_chat and update.effective_user:
+        return (update.effective_chat.id, update.effective_user.id)
+    return None
+
+
+def _load_ollama_memory():
+    """Load private, persistent memory from a file outside the Git repository."""
+    try:
+        OLLAMA_MEMORY_PATH.parent.mkdir(parents=True, exist_ok=True)
+        if not OLLAMA_MEMORY_PATH.exists():
+            OLLAMA_MEMORY_PATH.write_text(
+                json.dumps({"profile": "", "facts": []}, indent=2) + "\n",
+                encoding="utf-8",
+            )
+            try:
+                OLLAMA_MEMORY_PATH.chmod(0o600)
+            except OSError:
+                pass
+        data = json.loads(OLLAMA_MEMORY_PATH.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            raise ValueError("memory root must be an object")
+        profile = data.get("profile", "")
+        facts = data.get("facts", [])
+        return {
+            "profile": profile if isinstance(profile, str) else "",
+            "facts": [item for item in facts if isinstance(item, str)][:100],
+        }
+    except (OSError, json.JSONDecodeError, ValueError):
+        log.exception("Could not read Ollama memory file")
+        return {"profile": "", "facts": []}
+
+
+def _save_ollama_memory(memory):
+    OLLAMA_MEMORY_PATH.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = OLLAMA_MEMORY_PATH.with_suffix(".tmp")
+    temp_path.write_text(json.dumps(memory, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    try:
+        temp_path.chmod(0o600)
+    except OSError:
+        pass
+    temp_path.replace(OLLAMA_MEMORY_PATH)
+    try:
+        OLLAMA_MEMORY_PATH.chmod(0o600)
+    except OSError:
+        pass
+
+
+def _ollama_system_prompt():
+    memory = _load_ollama_memory()
+    parts = [
+        "You are the user's private, locally running Ollama assistant. Be useful, "
+        "honest about uncertainty, and adapt to the user's saved preferences. "
+        "Do not claim to remember details that are not in the provided memory or chat history.",
+    ]
+    if memory["profile"].strip():
+        parts.append("USER PROFILE AND PREFERENCES:\n" + memory["profile"].strip()[:6000])
+    if memory["facts"]:
+        parts.append("PERSISTENT USER FACTS:\n" + "\n".join(
+            f"- {fact[:500]}" for fact in memory["facts"][:50]
+        ))
+    return "\n\n".join(parts)
+
+
+def _split_telegram_text(text, limit=3900):
+    text = str(text or "").strip() or "(The model returned an empty response.)"
+    return [text[i:i + limit] for i in range(0, len(text), limit)]
+
+
+async def _ollama_models():
+    async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, connect=3.0)) as client:
+        response = await client.get(f"{OLLAMA_BASE_URL}/api/tags")
+        response.raise_for_status()
+        payload = response.json()
+    return sorted({
+        item.get("name", "").strip()
+        for item in payload.get("models", [])
+        if isinstance(item, dict) and item.get("name", "").strip()
+    })
+
+
+async def _ensure_ollama():
+    # Avoid invoking sudo when the local API is already responsive.
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(2.0, connect=1.0)) as client:
+            response = await client.get(f"{OLLAMA_BASE_URL}/api/tags")
+            if response.is_success:
+                return
+    except httpx.HTTPError:
+        pass
+
+    try:
+        result = await asyncio.to_thread(
+            subprocess.run,
+            ["sudo", "-n", "/usr/bin/systemctl", "start", "ollama.service"],
+            capture_output=True, text=True, timeout=20, check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise RuntimeError(f"Could not start ollama.service: {exc}") from exc
+    if result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip() or f"exit code {result.returncode}"
+        raise RuntimeError(f"Could not start ollama.service: {detail[:400]}")
+
+    last_error = "Ollama did not become ready in time."
+    for _ in range(25):
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(2.0, connect=1.0)) as client:
+                response = await client.get(f"{OLLAMA_BASE_URL}/api/tags")
+                if response.is_success:
+                    return
+                last_error = f"Ollama API returned HTTP {response.status_code}."
+        except httpx.HTTPError as exc:
+            last_error = str(exc)[:250]
+        await asyncio.sleep(1)
+    raise RuntimeError(last_error)
+
+
+async def ollama_chat_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await guard(update):
+        return
+    key = _chat_key(update)
+    if key in CHAT_SESSIONS:
+        await update.effective_message.reply_text("Ollama chat is already active. Use /bye to end it.")
+        return
+
+    status = await update.effective_message.reply_text("🦙 Starting/checking Ollama and loading installed models…")
+    try:
+        await _ensure_ollama()
+        models = await _ollama_models()
+    except (RuntimeError, httpx.HTTPError, ValueError) as exc:
+        await status.edit_text(
+            "Couldn't reach Ollama. Check that ollama.service is installed and "
+            "the bot can run sudo -n systemctl start ollama.service.\n\n"
+            f"Details: {str(exc)[:700]}"
+        )
+        return
+
+    if not models:
+        await status.edit_text("Ollama is running, but it has no downloaded models. Pull a model first.")
+        return
+
+    context.user_data["ollama_models"] = models
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton(f"🧠 {name}", callback_data=f"ollama:model:{index}")]
+        for index, name in enumerate(models)
+    ])
+    await status.edit_text(
+        "Choose an installed Ollama model for this chat.\n"
+        "Only models reported by your local Ollama server are listed.",
+        reply_markup=keyboard,
+    )
+
+
+async def ollama_model_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    if not await guard(update):
+        await query.edit_message_text("Not authorized.")
+        return
+    key = _chat_key(update)
+    if key in CHAT_SESSIONS:
+        await query.edit_message_text("Ollama chat is already active. Use /bye to end it.")
+        return
+    parts = (query.data or "").split(":")
+    models = context.user_data.get("ollama_models", [])
+    if len(parts) != 3 or not parts[2].isdigit():
+        await query.edit_message_text("Invalid model selection. Send /chat to try again.")
+        return
+    index = int(parts[2])
+    if index >= len(models):
+        await query.edit_message_text("That model selection expired. Send /chat to refresh the list.")
+        return
+    model = models[index]
+    # Refresh the installed-model list before starting, so stale buttons cannot select removed models.
+    try:
+        available = await _ollama_models()
+    except httpx.HTTPError as exc:
+        await query.edit_message_text(f"Couldn't query Ollama: {str(exc)[:500]}")
+        return
+    if model not in available:
+        await query.edit_message_text("That model is no longer installed. Send /chat to refresh the list.")
+        return
+
+    CHAT_SESSIONS[key] = {
+        "model": model,
+        "history": [],
+        "busy": False,
+        "task": None,
+        "busy_notice_sent": False,
+    }
+    context.user_data.pop("ollama_models", None)
+    await query.edit_message_text(
+        f"🦙 Ollama chat is active\nModel: {model}\n\n"
+        "Send a message to talk to the model. While it is generating, new messages "
+        "are ignored rather than queued. Other commands and menu buttons are disabled "
+        "until you send /bye. The conversation history is temporary; saved /memory "
+        "details persist between sessions."
+    )
+
+
+class ActiveOllamaChatFilter(filters.MessageFilter):
+    name = "ACTIVE_OLLAMA_CHAT"
+
+    def filter(self, message):
+        user = message.from_user
+        return bool(user and (message.chat.id, user.id) in CHAT_SESSIONS)
+
+
+def _active_chat_callback_pattern(query):
+    return bool(
+        query and query.message
+        and (query.message.chat.id, query.from_user.id) in CHAT_SESSIONS
+    )
+
+
+async def active_chat_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer("End chat with /bye to use the control menu.", show_alert=True)
+
+
+async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    key = _chat_key(update)
+    session = CHAT_SESSIONS.get(key)
+    if not session or not await guard(update):
+        return
+    message = update.effective_message
+    text = message.text if message else None
+
+    if text and text.strip().split(maxsplit=1)[0].split("@", 1)[0].lower() == "/bye":
+        task = session.get("task")
+        CHAT_SESSIONS.pop(key, None)
+        if task and task is not asyncio.current_task() and not task.done():
+            task.cancel()
+        await message.reply_text(
+            f"👋 Ollama chat ended (model: {session['model']}). "
+            "Ollama remains running. Send /chat whenever you want to start again."
+        )
+        return
+
+    if text and text.lstrip().startswith("/"):
+        await message.reply_text("Ollama chat is active. Other commands are disabled until /bye.")
+        return
+
+    if session["busy"]:
+        if not session.get("busy_notice_sent"):
+            session["busy_notice_sent"] = True
+            await message.reply_text(
+                "⏳ I'm still waiting for the previous answer, so this message was ignored. "
+                "Please send it again after I finish."
+            )
+        return
+
+    if not text or not text.strip():
+        await message.reply_text("Please send a text message, or use /bye to end the chat.")
+        return
+
+    session["busy"] = True
+    session["busy_notice_sent"] = False
+    session["task"] = asyncio.current_task()
+    user_text = text.strip()[:12000]
+    history = list(session["history"])
+    history.append({"role": "user", "content": user_text})
+    # Keep a short rolling transcript for an 8 GB host.
+    history = history[-12:]
+
+    try:
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(OLLAMA_TIMEOUT, connect=5.0)
+        ) as client:
+            response = await client.post(
+                f"{OLLAMA_BASE_URL}/api/chat",
+                json={
+                    "model": session["model"],
+                    "messages": [{"role": "system", "content": _ollama_system_prompt()}] + history,
+                    "stream": False,
+                    "options": {"num_ctx": 2048},
+                },
+            )
+            response.raise_for_status()
+            payload = response.json()
+        answer = payload.get("message", {}).get("content", "").strip()
+        if not answer:
+            raise RuntimeError("Ollama returned no response text.")
+        if CHAT_SESSIONS.get(key) is not session:
+            return
+        session["history"] = (history + [{"role": "assistant", "content": answer}])[-12:]
+        for chunk in _split_telegram_text(answer):
+            if CHAT_SESSIONS.get(key) is not session:
+                return
+            await message.reply_text(chunk)
+    except asyncio.CancelledError:
+        raise
+    except (httpx.HTTPError, RuntimeError, ValueError) as exc:
+        if CHAT_SESSIONS.get(key) is session:
+            await message.reply_text(f"⚠️ Ollama request failed: {str(exc)[:700]}")
+    finally:
+        if CHAT_SESSIONS.get(key) is session:
+            session["busy"] = False
+            session["task"] = None
+            session["busy_notice_sent"] = False
+
+
+async def ollama_memory_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await guard(update):
+        return
+    memory = _load_ollama_memory()
+    lines = [f"🧠 Ollama memory file: {OLLAMA_MEMORY_PATH}", ""]
+    lines.append("Profile:")
+    lines.append(memory["profile"].strip() or "(empty)")
+    lines.append("")
+    lines.append("Saved facts:")
+    lines.extend(f"{index}. {fact}" for index, fact in enumerate(memory["facts"], 1))
+    text = "\n".join(lines)
+    for chunk in _split_telegram_text(text):
+        await update.effective_message.reply_text(chunk)
+
+
+async def ollama_remember_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await guard(update):
+        return
+    fact = " ".join(context.args).strip()
+    if not fact:
+        await update.effective_message.reply_text("Usage: /remember <detail to retain for future Ollama chats>")
+        return
+    memory = _load_ollama_memory()
+    if any(existing.casefold() == fact.casefold() for existing in memory["facts"]):
+        await update.effective_message.reply_text("That detail is already saved.")
+        return
+    if len(memory["facts"]) >= 100:
+        await update.effective_message.reply_text("Memory is full (100 facts). Use /forget first.")
+        return
+    memory["facts"].append(fact[:1000])
+    _save_ollama_memory(memory)
+    await update.effective_message.reply_text("🧠 Saved. This detail will be included in future Ollama chats.")
+
+
+async def ollama_forget_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await guard(update):
+        return
+    needle = " ".join(context.args).strip()
+    if not needle:
+        await update.effective_message.reply_text("Usage: /forget <text to match in a saved fact>")
+        return
+    memory = _load_ollama_memory()
+    kept = [fact for fact in memory["facts"] if needle.casefold() not in fact.casefold()]
+    removed = len(memory["facts"]) - len(kept)
+    memory["facts"] = kept
+    _save_ollama_memory(memory)
+    await update.effective_message.reply_text(
+        f"Removed {removed} saved fact(s) matching that text." if removed
+        else "No saved facts matched. The profile field was not changed."
+    )
 
 
 def disk_usage_report() -> str:
@@ -1329,6 +1701,11 @@ COMMAND_DESCRIPTIONS = [
     BotCommand("docker", "List and manage approved containers and projects"),
     BotCommand("links", "Show dashboards and PIN-protected credentials"),
     BotCommand("power", "Open confirmed lock/suspend/reboot/shutdown controls"),
+    BotCommand("chat", "Start a private chat with a local Ollama model"),
+    BotCommand("bye", "End the active Ollama chat"),
+    BotCommand("memory", "Show persistent Ollama memory"),
+    BotCommand("remember", "Save a detail for future Ollama chats"),
+    BotCommand("forget", "Remove matching saved Ollama facts"),
 ]
 
 
@@ -1350,6 +1727,15 @@ def main():
         )
 
     app = Application.builder().token(TOKEN).post_init(register_command_descriptions).build()
+    # During an Ollama session, these first-in-group handlers absorb messages and
+    # callbacks before normal bot commands/menus can run. block=False lets the bot
+    # observe and discard messages sent while a model response is in progress.
+    app.add_handler(MessageHandler(
+        ActiveOllamaChatFilter(), active_chat_message, block=False
+    ))
+    app.add_handler(CallbackQueryHandler(
+        active_chat_callback, pattern=_active_chat_callback_pattern, block=False
+    ))
     app.add_handler(ConversationHandler(
         entry_points=[
             CallbackQueryHandler(reveal_credentials_start, pattern=r"^links:reveal$")
@@ -1366,6 +1752,11 @@ def main():
     app.add_handler(CommandHandler("power", power_command))
     app.add_handler(CallbackQueryHandler(power_callback, pattern=r"^power:"))
     app.add_handler(CommandHandler("links", links_command))
+    app.add_handler(CommandHandler("chat", ollama_chat_start))
+    app.add_handler(CommandHandler("memory", ollama_memory_command))
+    app.add_handler(CommandHandler("remember", ollama_remember_command))
+    app.add_handler(CommandHandler("forget", ollama_forget_command))
+    app.add_handler(CallbackQueryHandler(ollama_model_selected, pattern=r"^ollama:model:"))
     app.add_handler(CommandHandler("status", status))
     app.add_handler(CommandHandler("cpu", cpu))
     app.add_handler(CommandHandler("ram", ram))
