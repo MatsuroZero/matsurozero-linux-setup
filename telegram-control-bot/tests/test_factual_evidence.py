@@ -256,11 +256,11 @@ class EvidenceFormattingTests(unittest.TestCase):
     def test_equivalent_decimal_and_integer_values_are_not_flagged(self):
         evidence = {
             "title": "Example",
-            "excerpt": "The measurement was 12.",
+            "excerpt": "The reading was 12.",
         }
         result = factual_evidence.assess_answer_support(
-            "What was the measurement?",
-            "The measurement was 12.0.",
+            "What value was recorded?",
+            "The reading was 12.0.",
             evidence,
         )
         self.assertEqual(result["status"], "candidate_supported")
