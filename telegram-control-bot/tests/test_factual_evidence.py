@@ -97,6 +97,29 @@ class EvidenceRoutingTests(unittest.TestCase):
         )
 
 
+class EvidenceRelevanceTests(unittest.TestCase):
+    def test_relevant_excerpt_scores_above_unrelated_excerpt(self):
+        terms = factual_evidence._content_tokens(
+            "How do I install Python on Linux?"
+        )
+        relevant = factual_evidence._evidence_relevance_score(
+            terms,
+            "Installing Python on Linux",
+            "On Linux, install Python using the system package manager.",
+        )
+        unrelated = factual_evidence._evidence_relevance_score(
+            terms,
+            "World War II",
+            "The conflict began in Europe and expanded across many countries.",
+        )
+        self.assertGreater(relevant, unrelated)
+        self.assertGreaterEqual(relevant, 0.12)
+        self.assertLess(unrelated, 0.12)
+
+    def test_retrieval_prefers_relevant_technical_source_over_irrelevant_wikipedia(self):
+        # The end-to-end async selection test lives below to keep this class sync.
+
+
 class EvidenceFormattingTests(unittest.TestCase):
     def test_prompt_formats_excerpt_as_untrusted_candidate_evidence(self):
         prompt = factual_evidence.format_evidence_for_prompt({
