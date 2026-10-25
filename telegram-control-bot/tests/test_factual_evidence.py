@@ -181,7 +181,7 @@ class EvidenceFormattingTests(unittest.TestCase):
         })
         self.assertIn("Pure water boils at 100 °C.", prompt)
         self.assertNotIn("<b>", prompt)
-        self.assertIn("Article extract:", prompt)
+        self.assertIn("Extract:", prompt)
 
     def test_source_footer_rejects_non_wikipedia_urls(self):
         footer = factual_evidence.format_source_attribution({
