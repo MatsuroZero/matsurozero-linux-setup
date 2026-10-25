@@ -975,7 +975,20 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
 
     if text and text.lstrip().startswith("/"):
-        await message.reply_text("Ollama chat is active. Other commands are disabled until /bye.")
+        # Allow memory-management commands during /chat. They inspect or update saved
+        # context without interrupting the current conversational history.
+        handlers = {
+            "/memory": ollama_memory_command,
+            "/profile": ollama_profile_command,
+            "/remember": ollama_remember_command,
+            "/forget": ollama_forget_command,
+        }
+        handler = handlers.get(command_word)
+        if handler is not None:
+            context.args = text.strip().split()[1:]
+            await handler(update, context)
+            return
+        await message.reply_text("Ollama chat is active. Use /temp, /memory, /profile, /remember, /forget, or /bye.")
         return
 
     if session["busy"]:
@@ -1105,8 +1118,9 @@ async def ollama_profile_command(update: Update, context: ContextTypes.DEFAULT_T
     memory = _load_ollama_memory()
     if not profile:
         await update.effective_message.reply_text(
-            "Usage: /profile <personal instructions and preferences>\n"
-            "This replaces the persistent profile section. Use /memory to inspect it."
+            "🧠 Persistent Ollama profile:\n\n"
+            + (memory["profile"].strip() or "(empty)")
+            + "\n\nTo replace it, send /profile followed by the new profile text."
         )
         return
     memory["profile"] = profile[:6000]
