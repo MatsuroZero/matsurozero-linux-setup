@@ -117,11 +117,11 @@ def grade(case_id, response):
     elif case_id == "causal-explanation":
         ok = any(term in lower for term in ("restore", "recover", "replace", "copy", "preventing data loss", "prevent data loss", "data is protected")) and any(term in lower for term in ("data", "files", "information"))
     elif case_id == "basic-fact-capital":
-        ok = bool(re.search(r"\\bcanberra\\b", lower))
+        ok = bool(re.search(r"\bcanberra\b", lower))
     elif case_id == "basic-fact-boiling-point":
-        ok = bool(re.search(r"\\b100\\s*(?:°\\s*)?(?:c|celsius)?\\b", lower))
+        ok = bool(re.search(r"\b100\s*(?:°\s*)?(?:c|celsius)?\b", lower))
     elif case_id == "basic-fact-hexagon":
-        ok = bool(re.search(r"\\b6\\b|\\bsix\\b", lower))
+        ok = bool(re.search(r"\b6\b|\bsix\b", lower))
     elif case_id == "exact-list-size":
         numbers = re.findall(r"(?m)^\s*\d+[.)]\s+(.+)$", text)
         ok = len(numbers) == 3
