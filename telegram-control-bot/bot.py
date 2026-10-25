@@ -4,6 +4,7 @@ from fractions import Fraction
 import json
 import logging
 import httpx
+from factual_evidence import format_evidence_for_prompt, format_source_attribution, retrieve_wikipedia_evidence
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Thread
 import os
@@ -1392,6 +1393,13 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         # reply. On CPU-limited machines, concurrent Ollama requests compete for
         # the same cores and can make the user-facing response noticeably slower.
         system_prompt = _ollama_system_prompt(user_text, session.get("temporary_facts", []))
+        # Retrieve a small external excerpt only for objective factual questions.
+        # The helper excludes personal-memory, current-events, creative, and math queries.
+        # Retrieval failure is non-fatal and never prevents a normal Ollama answer.
+        evidence = await retrieve_wikipedia_evidence(user_text)
+        evidence_prompt = format_evidence_for_prompt(evidence)
+        if evidence_prompt:
+            system_prompt += "\\n\\n" + evidence_prompt
         if arithmetic_result is not None:
             system_prompt += (
                 "\n\nVERIFIED CALCULATION: A deterministic arithmetic evaluator calculated "
@@ -1428,6 +1436,8 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             raise RuntimeError("Ollama returned no response text.")
         # Small models sometimes echo a sentence or paragraph inside one answer.
         answer = _deduplicate_answer_text(answer)
+        if evidence_prompt:
+            answer += format_source_attribution(evidence)
         if CHAT_SESSIONS.get(key) is not session:
             return
 
