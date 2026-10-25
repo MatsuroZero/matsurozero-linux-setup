@@ -6,10 +6,10 @@ import logging
 import httpx
 from factual_evidence import (
     assess_answer_support,
-    format_evidence_for_prompt,
-    format_source_attribution,
+    format_multi_source_attribution,
+    format_multi_source_evidence_for_prompt,
     format_support_warning,
-    retrieve_wikipedia_evidence,
+    retrieve_multi_source_evidence,
 )
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Thread
@@ -1402,8 +1402,8 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         # Retrieve a small external excerpt only for objective factual questions.
         # The helper excludes personal-memory, current-events, creative, and math queries.
         # Retrieval failure is non-fatal and never prevents a normal Ollama answer.
-        evidence = await retrieve_wikipedia_evidence(user_text)
-        evidence_prompt = format_evidence_for_prompt(evidence)
+        evidence = await retrieve_multi_source_evidence(user_text)
+        evidence_prompt = format_multi_source_evidence_for_prompt(evidence)
         if evidence_prompt:
             system_prompt += "\n\n" + evidence_prompt
         if arithmetic_result is not None:
@@ -1445,13 +1445,13 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         if evidence_prompt:
             support = assess_answer_support(user_text, answer, evidence)
             if support["status"] == "candidate_supported":
-                answer += format_source_attribution(evidence)
+                answer += format_multi_source_attribution(evidence)
             else:
                 # This is only a lexical overlap check, not proof of correctness.
                 # Be transparent when the generated answer doesn't visibly match
                 # the retrieved extract instead of presenting the source as support.
                 answer += format_support_warning()
-                answer += format_source_attribution(evidence)
+                answer += format_multi_source_attribution(evidence)
         if CHAT_SESSIONS.get(key) is not session:
             return
 
