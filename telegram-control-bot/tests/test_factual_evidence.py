@@ -1007,3 +1007,23 @@ class CausalRelationGuardTests(unittest.TestCase):
         )
         self.assertEqual(result["status"], "candidate_supported")
 
+    def test_unrelated_causal_sentence_does_not_authorize_claim(self):
+        evidence = {
+            "title": "Mixed facts",
+            "excerpt": (
+                "Air molecules scatter blue wavelengths more strongly than red "
+                "wavelengths. Rain forms because moist air cools."
+            ),
+        }
+        result = factual_evidence.assess_answer_support(
+            "Why does the sky appear blue?",
+            "Air molecules scatter blue wavelengths more strongly than red "
+            "wavelengths because the wavelengths are shorter.",
+            evidence,
+        )
+        self.assertEqual(result["status"], "insufficient_overlap")
+        self.assertEqual(
+            result.get("reason"),
+            "causal_relation_not_explicit_in_evidence",
+        )
+
