@@ -62,6 +62,21 @@ class EvidenceRoutingTests(unittest.TestCase):
             factual_evidence.should_retrieve_factual_evidence("What is " + "x" * 300)
         )
 
+
+    def test_first_person_technical_questions_can_use_external_sources(self):
+        self.assertTrue(
+            factual_evidence.should_retrieve_factual_evidence(
+                "How do I install Python on Linux?"
+            )
+        )
+
+    def test_personal_device_questions_stay_local(self):
+        self.assertFalse(
+            factual_evidence.should_retrieve_factual_evidence(
+                "What is my phone model?"
+            )
+        )
+
     def test_general_educational_question_with_you_is_not_overfiltered(self):
         self.assertTrue(
             factual_evidence.should_retrieve_factual_evidence(
