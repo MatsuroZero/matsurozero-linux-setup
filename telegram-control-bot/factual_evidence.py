@@ -286,7 +286,7 @@ def assess_answer_support(question, answer, evidence):
 
     # Require at least one meaningful answer term and a modest fraction of
     # answer-specific terms in the source. This is a warning heuristic only.
-    supported = bool(matched) and overlap >= 0.25
+    supported = bool(matched) and overlap >= 0.75
     return {
         "status": "candidate_supported" if supported else "insufficient_overlap",
         "overlap": round(overlap, 3),
