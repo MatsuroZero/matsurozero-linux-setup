@@ -1097,8 +1097,6 @@ async def active_chat_callback(
     raise ApplicationHandlerStop
 
 
-def _answer_from_recent_disclosures(user_text, prior_history):
-
 def _safe_arithmetic_value(node):
     """Evaluate arithmetic AST nodes without eval() or arbitrary code execution."""
     if isinstance(node, ast.Expression):
@@ -1172,6 +1170,7 @@ def _answer_arithmetic_question(user_text):
         return None
 
 
+def _answer_from_recent_disclosures(user_text, prior_history):
     """Answer simple recall questions from explicit recent user statements, without guessing."""
     query = " ".join(str(user_text or "").casefold().split())
     if not isinstance(prior_history, list):
