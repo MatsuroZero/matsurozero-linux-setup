@@ -654,7 +654,7 @@ def detect_evidence_conflicts(evidence):
             canonical_number(match.group(0))
             for match in number_pattern.finditer(sentence)
         }
-        words = set(re.findall(r"\\b[a-z]+\\b", sentence.casefold())) & set(number_words)
+        words = set(re.findall(r"\b[a-z]+\b", sentence.casefold())) & set(number_words)
         values.update(canonical_number(number_words[word]) for word in words)
         # Single number words are normalized to the same representation as
         # digits. Compound number phrases are intentionally not fully parsed.
