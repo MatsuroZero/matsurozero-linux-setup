@@ -85,6 +85,21 @@ CASES = [
         "check": "abstain_time",
     },
     {
+        "id": "evidence-grounded-capital",
+        "prompt": "Evidence: Canberra is the capital city of Australia. Question: What is the capital of Australia? Answer in one short sentence using only the evidence.",
+        "check": "evidence_canberra",
+    },
+    {
+        "id": "evidence-missing-population",
+        "prompt": "Evidence: Canberra is the capital city of Australia. Question: What is Canberra's exact population? Use only the evidence. If it is not stated, say you cannot determine it.",
+        "check": "evidence_abstain",
+    },
+    {
+        "id": "evidence-reject-wrong-capital",
+        "prompt": "Evidence: Canberra is the capital city of Australia. Question: Is Sydney the capital of Australia? Answer using only the evidence and correct the claim if needed.",
+        "check": "evidence_contradiction",
+    },
+    {
         "id": "concise-definition",
         "prompt": "Define an API in one sentence for a beginner.",
         "check": "api_definition",
@@ -129,6 +144,14 @@ def grade(case_id, response):
         ok = bool(re.search(r"city\s*:\s*cairo", lower)) and bool(re.search(r"device\s*:\s*galaxy", lower))
     elif case_id == "missing-detail-abstention":
         ok = any(phrase in lower for phrase in ("not provided", "not specified", "does not say", "doesn't say", "does not provide", "does not include", "context only states", "cannot determine", "can't determine", "unknown", "no information", "not enough information"))
+    elif case_id == "evidence-grounded-capital":
+        ok = bool(re.search(r"\\bcanberra\\b", lower))
+    elif case_id == "evidence-abstain":
+        abstains = any(phrase in lower for phrase in ("cannot determine", "can't determine", "not specified", "not stated", "not provided", "insufficient information", "does not say"))
+        ok = abstains and not bool(re.search(r"\\b\\d[\\d,]*(?:\\.\\d+)?\\b", lower))
+    elif case_id == "evidence-contradiction":
+        denies = bool(re.search(r"\\b(no|not|incorrect|isn't|is not)\\b", lower))
+        ok = denies and bool(re.search(r"\\bcanberra\\b", lower))
     elif case_id == "concise-definition":
         ok = any(term in lower for term in ("interface", "rules and tools", "set of rules", "standardized protocols")) and any(term in lower for term in ("software", "program", "application", "systems", "communicate", "components"))
     else:
