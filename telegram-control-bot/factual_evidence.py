@@ -165,12 +165,22 @@ async def retrieve_wikipedia_evidence(question):
         if not candidates:
             return None
 
-        _, page_id, title, excerpt = min(candidates, key=lambda item: item[0])
+        question_terms = _content_tokens(question)
+        ranked = []
+        for rank, page_id, title, excerpt in candidates:
+            score = _evidence_relevance_score(question_terms, title, excerpt)
+            ranked.append((score, -rank, page_id, title, excerpt))
+        score, _, page_id, title, excerpt = max(ranked, key=lambda item: (item[0], item[1]))
+        # A search result with almost no question-specific overlap is more likely
+        # to mislead a small model than to help. Abstain rather than pass it along.
+        if score < 0.12:
+            return None
         return {
             "title": title,
             "excerpt": excerpt,
             "url": f"https://en.wikipedia.org/?curid={page_id}",
             "source": "Wikipedia article extract",
+            "relevance_score": round(score, 3),
         }
     except (httpx.HTTPError, ValueError, TypeError, KeyError):
         # Retrieval is optional. Network/API failure must not break normal chat.
@@ -236,6 +246,22 @@ def _normalize_support_phrases(text):
     for pattern, replacement in phrase_equivalents:
         normalized = re.sub(pattern, replacement, normalized)
     return normalized
+
+
+def _evidence_relevance_score(question_terms, title, excerpt):
+    """Score candidate evidence by question-term coverage, with a title boost.
+
+    This is cheap lexical ranking, not semantic relevance or entailment. The
+    score is used only to rank candidates and discard near-zero-overlap results.
+    """
+    terms = set(question_terms or ())
+    if not terms:
+        return 0.0
+    title_terms = _content_tokens(title)
+    excerpt_terms = _content_tokens(excerpt)
+    title_coverage = len(terms & title_terms) / len(terms)
+    excerpt_coverage = len(terms & excerpt_terms) / len(terms)
+    return 0.35 * title_coverage + 0.65 * excerpt_coverage
 
 
 def _content_tokens(text):
@@ -746,8 +772,28 @@ async def _retrieve_multi_source_evidence_uncached(question):
         sources.extend(item for item in technical if isinstance(item, dict))
     if not sources:
         return None
-    primary = dict(sources[0])
-    primary["additional_sources"] = sources[1:3]
+
+    question_terms = _content_tokens(question)
+    ranked_sources = []
+    for index, item in enumerate(sources):
+        score = _evidence_relevance_score(
+            question_terms, item.get("title", ""), item.get("excerpt", "")
+        )
+        # Preserve retrieval order for ties, but prefer a source whose actual
+        # title and text overlap the question rather than a default source type.
+        ranked_sources.append((score, -index, item))
+    ranked_sources.sort(key=lambda entry: (entry[0], entry[1]), reverse=True)
+    # Keep at most three records, and don't pass obviously off-topic sources to
+    # the model merely because an API returned something.
+    relevant = [
+        dict(item, relevance_score=round(score, 3))
+        for score, _, item in ranked_sources[:3]
+        if score >= 0.12
+    ]
+    if not relevant:
+        return None
+    primary = relevant[0]
+    primary["additional_sources"] = relevant[1:3]
     return primary
 
 
