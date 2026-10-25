@@ -801,8 +801,8 @@ async def _extract_temporary_facts(key, session, user_text):
         # afterward (e.g. "Do you like pizza? I personally love mozzarella pizza").
         # Skip only messages that are entirely questions; disclosure cues below decide
         # whether a mixed message merits extraction.
-        if lowered.endswith("?"):
-            return
+        # Do not discard a mixed message just because its final clause is a question.
+        # Disclosure cues below still filter out messages that contain no user facts.
         disclosure_cues = (
             "my name is ", "i like ", "i love ", "i enjoy ", "i prefer ",
             "i personally love ", "i personally like ", "i personally enjoy ",
