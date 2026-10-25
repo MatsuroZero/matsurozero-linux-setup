@@ -62,6 +62,7 @@ OLLAMA_MEMORY_PATH = Path(os.getenv(
     str(Path.home() / ".local" / "share" / "telegram-control-bot" / "ollama_memory.json"),
 ))
 CHAT_SESSIONS = {}
+FACT_EXTRACTION_MODEL = os.getenv("OLLAMA_MEMORY_MODEL", "qwen3:0.6b").strip() or "qwen3:0.6b"
 
 logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
@@ -595,6 +596,11 @@ def _ollama_system_prompt(user_text="", temporary_facts=None):
     query_categories = _text_categories(user_text)
     sections = _profile_sections(memory["profile"])
     parts = [
+        "For ordinary online chat, answer naturally and conversationally, usually in 1-3 sentences "
+        "(roughly 20-60 words). Keep your personality, warmth, humor, and reactions; do not sound robotic. "
+        "Avoid long lectures, repetitive summaries, and unnecessary headings or lists. When Matthew asks "
+        "for detailed explanations, tutorials, technical steps, or depth, give the detail the task needs. "
+        "Answer the actual message directly. "
         "You are the AI assistant speaking with Matthew, a separate human user. "
         "The saved profile and saved facts describe Matthew, NOT you. Any first-person "
         "wording inside saved profile text refers to Matthew and must be interpreted as "
@@ -683,14 +689,15 @@ async def _extract_temporary_facts(key, session, user_text):
             response = await client.post(
                 f"{OLLAMA_BASE_URL}/api/chat",
                 json={
-                    "model": session["model"],
+                    "model": FACT_EXTRACTION_MODEL,
                     "messages": [
                         {"role": "system", "content": system},
                         {"role": "user", "content": prompt},
                     ],
                     "stream": False,
                     "keep_alive": "10m",
-                    "options": {"num_ctx": 1024, "temperature": 0.1, "num_predict": 180},
+                    "think": False,
+                    "options": {"num_ctx": 1024, "temperature": 0.1, "num_predict": 120},
                 },
             )
             response.raise_for_status()
@@ -976,11 +983,19 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         except TelegramError:
             log.warning("Could not send Ollama thinking indicator", exc_info=True)
 
-        # Ensure the previous message's background memory extraction finishes before
-        # building this reply, so newly learned facts are available on the next turn.
+        # Give the previous extraction a brief head start, but never make a reply
+        # wait indefinitely for memory work on this CPU-limited machine.
         pending_memory = session.get("memory_task")
         if pending_memory is not None and not pending_memory.done():
-            await pending_memory
+            await asyncio.wait({pending_memory}, timeout=0.35)
+
+        # Extract facts from the user's message with the small model while the main
+        # conversational model prepares its reply. The helper queues behind any
+        # previous extraction so facts are not written out of order.
+        memory_task = asyncio.create_task(
+            _extract_after_previous(pending_memory, key, session, user_text)
+        )
+        session["memory_task"] = memory_task
 
         async with httpx.AsyncClient(
             timeout=httpx.Timeout(OLLAMA_TIMEOUT, connect=5.0)
@@ -992,7 +1007,13 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
                     "messages": [{"role": "system", "content": _ollama_system_prompt(user_text, session.get("temporary_facts", []))}] + history,
                     "stream": False,
                     "keep_alive": "10m",
-                    "options": {"num_ctx": 2048},
+                    "think": False,
+                    "options": {
+                        "num_ctx": 2048,
+                        "num_predict": 220,
+                        "temperature": 0.7,
+                        "top_p": 0.9,
+                    },
                 },
             )
             response.raise_for_status()
@@ -1002,6 +1023,11 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             raise RuntimeError("Ollama returned no response text.")
         if CHAT_SESSIONS.get(key) is not session:
             return
+
+        # If fact extraction has already finished, include it before sending. Give
+        # it only a short grace period; a slow extractor must never hold up the reply.
+        await asyncio.wait({memory_task}, timeout=0.5)
+
         if thinking_message is not None:
             try:
                 await thinking_message.delete()
@@ -1013,11 +1039,6 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             if CHAT_SESSIONS.get(key) is not session:
                 return
             await message.reply_text(chunk)
-        # Extract memories after answering so the extra inference doesn't delay the reply.
-        previous_memory_task = session.get("memory_task")
-        session["memory_task"] = asyncio.create_task(
-            _extract_after_previous(previous_memory_task, key, session, user_text)
-        )
     except asyncio.CancelledError:
         raise
     except (httpx.HTTPError, RuntimeError, ValueError) as exc:
