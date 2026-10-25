@@ -684,3 +684,30 @@ class EvidenceCacheTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn("what is c?", factual_evidence._EVIDENCE_CACHE)
         finally:
             factual_evidence.EVIDENCE_CACHE_MAX_ENTRIES = 128
+
+    async def test_expired_cache_entry_is_refetched(self):
+        factual_evidence.EVIDENCE_CACHE_TTL_SECONDS = 10.0
+        try:
+            with patch.object(
+                factual_evidence.time,
+                "monotonic",
+                side_effect=[100.0, 111.0],
+            ):
+                with patch.object(
+                    factual_evidence,
+                    "_retrieve_multi_source_evidence_uncached",
+                    new=AsyncMock(side_effect=[
+                        {"title": "Old result"}, {"title": "Fresh result"}
+                    ]),
+                ) as retrieve:
+                    first = await factual_evidence.retrieve_multi_source_evidence(
+                        "What is Python?"
+                    )
+                    second = await factual_evidence.retrieve_multi_source_evidence(
+                        "What is Python?"
+                    )
+            self.assertEqual(first["title"], "Old result")
+            self.assertEqual(second["title"], "Fresh result")
+            self.assertEqual(retrieve.await_count, 2)
+        finally:
+            factual_evidence.EVIDENCE_CACHE_TTL_SECONDS = 180.0
