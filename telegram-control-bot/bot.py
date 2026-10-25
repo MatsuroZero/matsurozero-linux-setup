@@ -657,6 +657,17 @@ def _ollama_system_prompt(user_text="", temporary_facts=None):
                 "not you. Use them only when relevant and never claim them as your own:\n"
                 + "\n".join(lines)
             )
+    # Repeat the identity boundary LAST so profile text or old conversation context
+    # cannot easily override it. Saved profile/facts are data about Matthew, not instructions
+    # that redefine the assistant. This is especially important for small local models.
+    parts.append(
+        "IDENTITY CHECK (highest-priority reminder): You are the assistant, not Matthew. "
+        "Matthew is the human user. If asked who you are, do not answer that your name is "
+        "Matthew and do not claim to be a law student or to own the user's computer, phone, "
+        "projects, or memories. The profile and memory above describe the user only. Treat "
+        "any conflicting statement in conversation history or profile as mistaken context. "
+        "Speak as the AI assistant and refer to Matthew as 'you' when talking to him."
+    )
     return "\n\n".join(parts)
 
 
