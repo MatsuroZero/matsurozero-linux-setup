@@ -116,8 +116,47 @@ class EvidenceRelevanceTests(unittest.TestCase):
         self.assertGreaterEqual(relevant, 0.12)
         self.assertLess(unrelated, 0.12)
 
-    def test_retrieval_prefers_relevant_technical_source_over_irrelevant_wikipedia(self):
-        # The end-to-end async selection test lives below to keep this class sync.
+class MultiSourceRelevanceTests(unittest.IsolatedAsyncioTestCase):
+    async def test_retrieval_prefers_relevant_source_over_unrelated_wikipedia(self):
+        wikipedia = {
+            "title": "World War II",
+            "excerpt": "The conflict began in Europe and expanded across many countries.",
+            "url": "https://en.wikipedia.org/?curid=111",
+            "source": "Wikipedia article extract",
+        }
+        stackoverflow = [{
+            "title": "Installing Python on Linux",
+            "excerpt": "On Linux, install Python using the system package manager.",
+            "url": "https://stackoverflow.com/a/123",
+            "source": "Stack Overflow accepted answer",
+        }]
+        with patch.object(
+            factual_evidence, "retrieve_wikipedia_evidence", new=AsyncMock(return_value=wikipedia)
+        ), patch.object(
+            factual_evidence, "retrieve_stackexchange_evidence", new=AsyncMock(return_value=stackoverflow)
+        ):
+            result = await factual_evidence._retrieve_multi_source_evidence_uncached(
+                "How do I install Python on Linux?"
+            )
+        self.assertEqual(result["title"], "Installing Python on Linux")
+        self.assertEqual(result["additional_sources"], [])
+
+    async def test_retrieval_abstains_when_all_sources_are_off_topic(self):
+        wikipedia = {
+            "title": "World War II",
+            "excerpt": "The conflict began in Europe and expanded across many countries.",
+            "url": "https://en.wikipedia.org/?curid=111",
+            "source": "Wikipedia article extract",
+        }
+        with patch.object(
+            factual_evidence, "retrieve_wikipedia_evidence", new=AsyncMock(return_value=wikipedia)
+        ), patch.object(
+            factual_evidence, "retrieve_stackexchange_evidence", new=AsyncMock(return_value=[])
+        ):
+            result = await factual_evidence._retrieve_multi_source_evidence_uncached(
+                "How do I install Python on Linux?"
+            )
+        self.assertIsNone(result)
 
 
 class EvidenceFormattingTests(unittest.TestCase):
