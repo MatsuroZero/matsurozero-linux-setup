@@ -958,3 +958,40 @@ class NumericFalsePositiveTests(unittest.TestCase):
             factual_evidence._normalized_numeric_values("Planet X has 21 moons."),
         )
 
+class CausalRelationGuardTests(unittest.TestCase):
+    def test_shared_topic_words_do_not_support_added_causal_link(self):
+        evidence = {
+            "title": "Rayleigh scattering",
+            "excerpt": (
+                "Air molecules scatter blue wavelengths more strongly than red "
+                "wavelengths. The wavelengths are shorter."
+            ),
+        }
+        result = factual_evidence.assess_answer_support(
+            "Why does the sky appear blue?",
+            "Air molecules scatter blue wavelengths more strongly than red "
+            "wavelengths because the wavelengths are shorter.",
+            evidence,
+        )
+        self.assertEqual(result["status"], "insufficient_overlap")
+        self.assertEqual(
+            result.get("reason"),
+            "causal_relation_not_explicit_in_evidence",
+        )
+
+    def test_explicitly_supported_causal_link_is_not_rejected(self):
+        evidence = {
+            "title": "Rayleigh scattering",
+            "excerpt": (
+                "Air molecules scatter blue wavelengths more strongly than red "
+                "wavelengths because the wavelengths are shorter."
+            ),
+        }
+        result = factual_evidence.assess_answer_support(
+            "Why does the sky appear blue?",
+            "Air molecules scatter blue wavelengths more strongly than red "
+            "wavelengths because the wavelengths are shorter.",
+            evidence,
+        )
+        self.assertEqual(result["status"], "candidate_supported")
+
