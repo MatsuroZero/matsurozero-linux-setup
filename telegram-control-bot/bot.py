@@ -556,7 +556,7 @@ async def service_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if len(context.args) != 2:
         await update.effective_message.reply_text(
-            "Usage: /service <name> <status|start|stop|restart>\\n"
+            "Usage: /service <name> <status|start|stop|restart>\n"
             "Run /services to see supported service names."
         )
         return
@@ -1250,7 +1250,11 @@ COMMAND_DESCRIPTIONS = [
 
 async def register_command_descriptions(application):
     """Publish helpful labels in Telegram's command picker."""
-    await application.bot.set_my_commands(COMMAND_DESCRIPTIONS)
+    try:
+        await application.bot.set_my_commands(COMMAND_DESCRIPTIONS)
+    except Exception:
+        # Command descriptions are a convenience; don't prevent bot startup.
+        log.exception("Could not publish Telegram command descriptions")
 
 
 def main():
