@@ -1404,7 +1404,9 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         # Retrieve a small external excerpt only for objective factual questions.
         # The helper excludes personal-memory, current-events, creative, and math queries.
         # Retrieval failure is non-fatal and never prevents a normal Ollama answer.
+        evidence_started = time.perf_counter()
         evidence = await retrieve_multi_source_evidence(user_text)
+        log.debug('Evidence retrieval stage took %.3fs', time.perf_counter() - evidence_started)
         evidence_prompt = format_multi_source_evidence_for_prompt(evidence)
         if evidence_prompt:
             system_prompt += "\n\n" + evidence_prompt
