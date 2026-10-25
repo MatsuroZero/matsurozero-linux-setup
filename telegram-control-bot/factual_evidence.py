@@ -556,6 +556,16 @@ def assess_claim_level_support(question, answer, evidence):
     text = str(answer or "").strip()
     if not text:
         return {"status": "unavailable", "claims": [], "unsupported_claims": []}
+    conflicts = detect_evidence_conflicts(evidence)
+    if conflicts:
+        return {
+            "status": "insufficient_overlap",
+            "claims": [],
+            "unsupported_claims": [text[:500]],
+            "reason": "evidence_conflict",
+            "conflicts": conflicts[:5],
+        }
+
     claims = []
     for line in re.split(r"[\r\n]+", text):
         line = re.sub(r"^\s*(?:[-*•]+|\d+[.)])\s*", "", line).strip()
@@ -583,10 +593,16 @@ def assess_claim_level_support(question, answer, evidence):
         "unsupported_claims": unsupported[:10],
     }
 
-def format_support_warning():
-    """Tell the user the source did not visibly support the generated answer."""
+def format_support_warning(support=None):
+    """Explain whether support failed because evidence conflicted or was insufficient."""
+    if isinstance(support, dict) and support.get("reason") == "evidence_conflict":
+        return (
+            "\\n\\n⚠️ The retrieved sources appear to disagree on a relevant detail. "
+            "I can't reliably resolve that disagreement from these extracts, so treat "
+            "the answer as unverified."
+        )
     return (
-        "\n\n⚠️ I found a possible reference, but the answer did not clearly match "
+        "\\n\\n⚠️ I found a possible reference, but the answer did not clearly match "
         "the retrieved extract. Please treat the answer as unverified."
     )
 
