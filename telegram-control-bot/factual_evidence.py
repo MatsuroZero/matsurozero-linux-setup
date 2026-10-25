@@ -5,8 +5,10 @@ not prove a claim true: callers must treat results as candidate evidence and all
 the model to abstain when the extract does not answer the question.
 """
 import asyncio
+import copy
 import html
 import re
+import time
 from urllib.parse import urlparse
 
 import httpx
@@ -15,6 +17,10 @@ WIKIPEDIA_API = "https://en.wikipedia.org/w/api.php"
 REQUEST_TIMEOUT_SECONDS = 3.0
 MAX_QUESTION_CHARS = 240
 MAX_EXTRACT_CHARS = 1200
+EVIDENCE_CACHE_TTL_SECONDS = 180.0
+EVIDENCE_MISS_CACHE_TTL_SECONDS = 20.0
+EVIDENCE_CACHE_MAX_ENTRIES = 128
+_EVIDENCE_CACHE = {}
 
 
 def should_retrieve_factual_evidence(question):
@@ -451,9 +457,26 @@ async def retrieve_stackexchange_evidence(question):
         return []
 
 async def retrieve_multi_source_evidence(question):
-    """Fetch relevant evidence sources concurrently; failures never break chat."""
+    """Fetch evidence with a short bounded cache to avoid repeat network latency."""
     if not should_retrieve_factual_evidence(question):
         return None
+    cache_key = " ".join(str(question or "").casefold().split())
+    now = time.monotonic()
+    cached = _EVIDENCE_CACHE.get(cache_key)
+    if cached and cached[0] > now:
+        _EVIDENCE_CACHE.move_to_end(cache_key) if hasattr(_EVIDENCE_CACHE, "move_to_end") else None
+        return copy.deepcopy(cached[1])
+    result = await _retrieve_multi_source_evidence_uncached(question)
+    ttl = EVIDENCE_CACHE_TTL_SECONDS if result else EVIDENCE_MISS_CACHE_TTL_SECONDS
+    _EVIDENCE_CACHE[cache_key] = (now + ttl, copy.deepcopy(result))
+    if len(_EVIDENCE_CACHE) > EVIDENCE_CACHE_MAX_ENTRIES:
+        oldest_key = next(iter(_EVIDENCE_CACHE))
+        del _EVIDENCE_CACHE[oldest_key]
+    return result
+
+
+async def _retrieve_multi_source_evidence_uncached(question):
+    """Fetch relevant evidence sources concurrently; failures never break chat."""
     wikipedia, technical = await asyncio.gather(
         retrieve_wikipedia_evidence(question),
         retrieve_stackexchange_evidence(question),
