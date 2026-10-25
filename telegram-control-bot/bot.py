@@ -589,7 +589,7 @@ def _profile_sections(profile):
     return {key: " ".join(values) for key, values in sections.items()}
 
 
-def _ollama_system_prompt(user_text=""):
+def _ollama_system_prompt(user_text="", temporary_facts=None):
     """Build an identity-safe prompt with only topic-relevant saved memory."""
     memory = _load_ollama_memory()
     query_categories = _text_categories(user_text)
@@ -603,17 +603,13 @@ def _ollama_system_prompt(user_text=""):
         "games, or create his projects. Itsuki-inspired traits describe your conversational "
         "style only; they do not mean you are Matthew or literally Itsuki. When discussing "
         "the user's memories, say 'you' or 'Matthew'; use 'I' only for the AI assistant's "
-        "own actions, preferences explicitly framed as conversational opinions, and limitations. "
-        "Do not invent personal experiences. If ownership is unclear, ask instead of guessing."
+        "own actions and limitations. Do not invent personal experiences. If ownership is "
+        "unclear, ask instead of guessing."
     ]
-
-    # Keep a concise user identity and assistant-style layer available on every turn.
     for category in ("identity", "style"):
         content = sections.get(category, "").strip()
         if content:
             parts.append(f"CORE {category.upper()} CONTEXT:\n{content[:700]}")
-
-    # Retrieve topical profile sections only when the message matches that topic.
     for category in sorted(query_categories - {"identity", "style"}):
         content = sections.get(category, "").strip()
         if content:
@@ -633,10 +629,114 @@ def _ollama_system_prompt(user_text=""):
         categories = _text_categories(fact)
         if categories.intersection(query_categories) or (not categories and not query_categories):
             relevant_facts.append(fact)
-
     if relevant_facts:
         parts.append("RELEVANT SAVED FACTS:\n" + "\n".join(f"- {fact[:200]}" for fact in relevant_facts[:6]))
+
+    # These notes exist only for the current /chat session and are about Matthew.
+    session_facts = temporary_facts if isinstance(temporary_facts, list) else []
+    selected = [
+        item for item in session_facts
+        if isinstance(item, dict)
+        and (item.get("category") in query_categories or not query_categories)
+    ]
+    if selected:
+        lines = [
+            f"- [{item.get('category', 'identity')}] {str(item.get('fact', ''))[:180]}"
+            for item in selected[-12:]
+            if str(item.get("fact", "")).strip()
+        ]
+        if lines:
+            parts.append(
+                "TEMPORARY SESSION MEMORY: these facts describe Matthew, the human user, "
+                "not you. Use them only when relevant and never claim them as your own:\n"
+                + "\n".join(lines)
+            )
     return "\n\n".join(parts)
+
+
+async def _extract_temporary_facts(key, session, user_text):
+    """Use the selected local model to summarize new user facts for this session only."""
+    try:
+        if CHAT_SESSIONS.get(key) is not session:
+            return
+        existing = session.setdefault("temporary_facts", [])
+        system = (
+            "Extract concise, useful facts about the HUMAN USER from their newest message. "
+            "The assistant is a separate AI; never save facts about the assistant as facts about the user. "
+            "Return only JSON shaped like {\"facts\":[{\"category\":\"identity\",\"fact\":\"Matthew's name is Matthew\"}]}. "
+            "Allowed categories: identity, style, learning, projects, linux, gaming, creative, food. "
+            "Write facts in third person about Matthew/the user. Include explicit self-disclosures, "
+            "preferences, possessions, ongoing projects, and clear personal traits. Do not save questions, "
+            "commands, generic greetings, fictional claims, or guesses. If a message clearly conveys warmth "
+            "or politeness, a concise note like \"Matthew is friendly and polite\" is acceptable. "
+            "Keep each fact short. Do not repeat facts already present; semantic duplicates count as repeats. "
+            "If nothing useful is new, return {\"facts\":[]}."
+        )
+        prompt = (
+            "Existing temporary facts (do not duplicate): "
+            + json.dumps(existing, ensure_ascii=False)
+            + "\nNewest user message: " + user_text[:3000]
+        )
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(min(45.0, OLLAMA_TIMEOUT), connect=5.0)
+        ) as client:
+            response = await client.post(
+                f"{OLLAMA_BASE_URL}/api/chat",
+                json={
+                    "model": session["model"],
+                    "messages": [
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": prompt},
+                    ],
+                    "stream": False,
+                    "keep_alive": "10m",
+                    "options": {"num_ctx": 1024, "temperature": 0.1, "num_predict": 180},
+                },
+            )
+            response.raise_for_status()
+            raw = response.json().get("message", {}).get("content", "")
+        match = re.search(r"\{.*\}", raw, flags=re.S)
+        if not match:
+            return
+        parsed = json.loads(match.group(0))
+        candidates = parsed.get("facts", []) if isinstance(parsed, dict) else []
+        if not isinstance(candidates, list):
+            return
+
+        known = {
+            re.sub(r"[^a-z0-9]+", " ", str(item.get("fact", "")).casefold()).strip()
+            for item in existing if isinstance(item, dict)
+        }
+        for item in candidates:
+            if not isinstance(item, dict):
+                continue
+            category = str(item.get("category", "identity")).casefold().strip()
+            fact = " ".join(str(item.get("fact", "")).split())[:180]
+            if category not in MEMORY_CATEGORIES or not fact:
+                continue
+            if any(term in fact.casefold() for term in ("the assistant is", "i am an ai", "my model", "my linux setup")):
+                continue
+            normalized = re.sub(r"[^a-z0-9]+", " ", fact.casefold()).strip()
+            if normalized in known or CHAT_SESSIONS.get(key) is not session:
+                continue
+            existing.append({"category": category, "fact": fact})
+            known.add(normalized)
+        session["temporary_facts"] = existing[-20:]
+    except asyncio.CancelledError:
+        raise
+    except (httpx.HTTPError, ValueError, TypeError, KeyError, RuntimeError):
+        log.debug("Temporary Ollama memory extraction failed", exc_info=True)
+
+
+async def _extract_after_previous(previous_task, key, session, user_text):
+    if previous_task is not None and previous_task is not asyncio.current_task() and not previous_task.done():
+        try:
+            await previous_task
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            log.debug("Previous temporary-memory task failed", exc_info=True)
+    await _extract_temporary_facts(key, session, user_text)
 
 
 def _split_telegram_text(text, limit=3900):
@@ -764,6 +864,8 @@ async def ollama_model_selected(update: Update, context: ContextTypes.DEFAULT_TY
     CHAT_SESSIONS[key] = {
         "model": model,
         "history": [],
+        "temporary_facts": [],
+        "memory_task": None,
         "busy": False,
         "task": None,
         "busy_notice_sent": False,
@@ -868,7 +970,7 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
                 f"{OLLAMA_BASE_URL}/api/chat",
                 json={
                     "model": session["model"],
-                    "messages": [{"role": "system", "content": _ollama_system_prompt(user_text)}] + history,
+                    "messages": [{"role": "system", "content": _ollama_system_prompt(user_text, session.get("temporary_facts", []))}] + history,
                     "stream": False,
                     "keep_alive": "10m",
                     "options": {"num_ctx": 2048},
@@ -892,6 +994,11 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             if CHAT_SESSIONS.get(key) is not session:
                 return
             await message.reply_text(chunk)
+        # Extract memories after answering so the extra inference doesn't delay the reply.
+        previous_memory_task = session.get("memory_task")
+        session["memory_task"] = asyncio.create_task(
+            _extract_after_previous(previous_memory_task, key, session, user_text)
+        )
     except asyncio.CancelledError:
         raise
     except (httpx.HTTPError, RuntimeError, ValueError) as exc:
