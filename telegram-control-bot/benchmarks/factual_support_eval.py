@@ -84,6 +84,8 @@ def main() -> int:
     rows = []
     false_accepts = 0
     false_rejections = 0
+    true_accepts = 0
+    true_rejections = 0
     for case in CASES:
         actual = assess_answer_support(
             case["question"], case["answer"], case["evidence"]
@@ -92,6 +94,8 @@ def main() -> int:
         passed = actual == expected
         false_accepts += expected == "insufficient_overlap" and actual == "candidate_supported"
         false_rejections += expected == "candidate_supported" and actual != "candidate_supported"
+        true_accepts += expected == "candidate_supported" and actual == "candidate_supported"
+        true_rejections += expected == "insufficient_overlap" and actual == "insufficient_overlap"
         rows.append({
             "case": case["name"],
             "expected": expected,
@@ -99,12 +103,18 @@ def main() -> int:
             "match": passed,
         })
 
+    precision_denominator = true_accepts + false_accepts
+    recall_denominator = true_accepts + false_rejections
     summary = {
         "cases": len(rows),
         "matches": sum(row["match"] for row in rows),
         "match_rate": round(sum(row["match"] for row in rows) / len(rows), 3),
+        "true_accepts": true_accepts,
+        "true_rejections": true_rejections,
         "false_accepts": false_accepts,
         "false_rejections": false_rejections,
+        "precision": round(true_accepts / precision_denominator, 3) if precision_denominator else None,
+        "recall": round(true_accepts / recall_denominator, 3) if recall_denominator else None,
         "warning": "Synthetic diagnostic only; lexical overlap is not truth verification.",
         "results": rows,
     }
