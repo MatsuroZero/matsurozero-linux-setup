@@ -636,7 +636,7 @@ def detect_evidence_conflicts(evidence):
 
     def numeric_values(sentence):
         values = set(number_pattern.findall(sentence))
-        words = set(re.findall(r"\\b[a-z]+\\b", sentence.casefold())) & number_words
+        words = set(re.findall(r"\b[a-z]+\b", sentence.casefold())) & number_words
         # Word-form values catch obvious disagreements such as "twelve moons"
         # versus "fourteen moons". Compound numbers are deliberately not parsed.
         values.update("word:" + word for word in words)
