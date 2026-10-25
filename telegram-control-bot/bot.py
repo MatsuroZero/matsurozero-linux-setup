@@ -20,6 +20,9 @@ from telegram.ext import (
     CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
+    ConversationHandler,
+    MessageHandler,
+    filters,
 )
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -27,6 +30,26 @@ load_dotenv(BASE_DIR / ".env")
 
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 ALLOWED_USER_ID = os.getenv("TELEGRAM_ALLOWED_USER_ID", "").strip()
+LINKS_PIN = os.getenv("LINKS_PIN", "7171").strip()
+LINK_CREDENTIALS = {
+    "🖥️ System dashboard": (
+        os.getenv("SYSTEM_DASHBOARD_USERNAME", "").strip(),
+        os.getenv("SYSTEM_DASHBOARD_PASSWORD", ""),
+    ),
+    "🧠 Odysseus": (
+        os.getenv("ODYSSEUS_USERNAME", "").strip(),
+        os.getenv("ODYSSEUS_PASSWORD", ""),
+    ),
+    "🎬 Jellyfin": (
+        os.getenv("JELLYFIN_USERNAME", "").strip(),
+        os.getenv("JELLYFIN_PASSWORD", ""),
+    ),
+    "📡 Uptime Kuma": (
+        os.getenv("UPTIME_KUMA_USERNAME", "").strip(),
+        os.getenv("UPTIME_KUMA_PASSWORD", ""),
+    ),
+}
+PIN_ENTRY = 1
 
 logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
@@ -241,7 +264,7 @@ async def menu_page_text(action):
             "🧠 Odysseus\nhttp://marwan-pc.local:7011/\n\n"
             "🎬 Jellyfin\nhttp://marwan-pc.local:8096/\n\n"
             "📡 Uptime Kuma\nhttp://marwan-pc.local:3001/\n\n"
-            "🔒 Passwords are intentionally omitted here."
+            "🔐 Use /links and the Reveal Credentials button to access login details."
         )
 
     if action == "help":
@@ -281,7 +304,7 @@ async def menu_page_text(action):
             "Project names: odysseus, uptime-kuma, localnexus.\n"
             "Use /docker to see aliases and exact Docker container names.\n\n"
             "🔗 DASHBOARDS & POWER\n"
-            "/links  Show local dashboard URLs without credentials\n"
+            "/links  Show dashboard URLs; credentials require a PIN\n"
             "/power  Open lock, suspend, reboot, and shutdown controls\n"
             "Power actions require confirmation and expire after 60 seconds.\n\n"
             "🔒 SECURITY\n"
@@ -348,7 +371,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def links_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """List dashboard addresses without exposing credentials in chat."""
+    """List dashboard addresses and offer PIN-protected credential reveal."""
     if not await guard(update):
         return
     await update.effective_message.reply_text(
@@ -358,8 +381,69 @@ async def links_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🧠 Odysseus\nhttp://marwan-pc.local:7011/\n\n"
         "🎬 Jellyfin\nhttp://marwan-pc.local:8096/\n\n"
         "📡 Uptime Kuma\nhttp://marwan-pc.local:3001/\n\n"
-        "🔐 For security, this command never displays usernames or passwords."
+        "🔐 Credentials stay hidden until the PIN is verified.",
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("🔓 Reveal Credentials", callback_data="links:reveal")
+        ]]),
     )
+
+
+async def reveal_credentials_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    if not await guard(update):
+        await query.edit_message_text("Not authorized.")
+        return ConversationHandler.END
+
+    await query.message.reply_text(
+        "🔐 Enter the credentials PIN. Any other message cancels this attempt."
+    )
+    return PIN_ENTRY
+
+
+async def credentials_pin_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Allow one PIN attempt; any other message or update cancels immediately."""
+    message = update.effective_message
+    if not authorized(update):
+        return ConversationHandler.END
+
+    supplied_pin = message.text.strip() if message and message.text is not None else None
+    chat_id = update.effective_chat.id if update.effective_chat else None
+
+    if supplied_pin != LINKS_PIN:
+        if message:
+            try:
+                await message.delete()
+            except Exception:
+                log.debug("Could not delete PIN-attempt message", exc_info=True)
+            if chat_id is not None:
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text="❌ Failed attempt. PIN entry cancelled.",
+                )
+        return ConversationHandler.END
+
+    if any(not username or not password for username, password in LINK_CREDENTIALS.values()):
+        if chat_id is not None:
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text="⚠️ Credentials are not fully configured in the bot's local .env file.",
+            )
+        return ConversationHandler.END
+
+    if message:
+        try:
+            await message.delete()
+        except Exception:
+            log.debug("Could not delete successful PIN message", exc_info=True)
+
+    lines = ["🔐 DASHBOARD CREDENTIALS", "━━━━━━━━━━━━━━━━━━", ""]
+    for label, (username, password) in LINK_CREDENTIALS.items():
+        lines.extend([label, f"Username: {username}", f"Password: {password}", ""])
+    lines.append("Keep this message private and delete it when finished.")
+    if chat_id is not None:
+        await context.bot.send_message(chat_id=chat_id, text="\n".join(lines))
+    return ConversationHandler.END
 
 
 def disk_usage_report() -> str:
@@ -1243,7 +1327,7 @@ COMMAND_DESCRIPTIONS = [
     BotCommand("services", "List Nexus/systemd service states"),
     BotCommand("service", "Control or check an approved systemd service"),
     BotCommand("docker", "List and manage approved containers and projects"),
-    BotCommand("links", "List local dashboard URLs without credentials"),
+    BotCommand("links", "Show dashboards and PIN-protected credentials"),
     BotCommand("power", "Open confirmed lock/suspend/reboot/shutdown controls"),
 ]
 
@@ -1266,6 +1350,15 @@ def main():
         )
 
     app = Application.builder().token(TOKEN).post_init(register_command_descriptions).build()
+    app.add_handler(ConversationHandler(
+        entry_points=[
+            CallbackQueryHandler(reveal_credentials_start, pattern=r"^links:reveal$")
+        ],
+        states={PIN_ENTRY: [MessageHandler(filters.ALL, credentials_pin_handler)]},
+        fallbacks=[],
+        per_chat=True,
+        per_user=True,
+    ))
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("menu", menu_command))
