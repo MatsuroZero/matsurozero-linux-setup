@@ -40,6 +40,18 @@ class EvidenceRoutingTests(unittest.TestCase):
                     factual_evidence.should_retrieve_factual_evidence(question)
                 )
 
+    def test_physics_question_about_electric_current_can_use_retrieval(self):
+        self.assertTrue(
+            factual_evidence.should_retrieve_factual_evidence(
+                "What is electric current?"
+            )
+        )
+        self.assertTrue(
+            factual_evidence.should_retrieve_factual_evidence(
+                "How does current flow in a circuit?"
+            )
+        )
+
     def test_recommendations_and_creative_requests_skip_retrieval(self):
         self.assertFalse(
             factual_evidence.should_retrieve_factual_evidence(
