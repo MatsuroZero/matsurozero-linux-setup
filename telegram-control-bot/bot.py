@@ -1138,20 +1138,9 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         except TelegramError:
             log.warning("Could not send Ollama thinking indicator", exc_info=True)
 
-        # Give the previous extraction a brief head start, but never make a reply
-        # wait indefinitely for memory work on this CPU-limited machine.
-        pending_memory = session.get("memory_task")
-        if pending_memory is not None and not pending_memory.done():
-            await asyncio.wait({pending_memory}, timeout=0.35)
-
-        # Extract facts from the user's message with the small model while the main
-        # conversational model prepares its reply. The helper queues behind any
-        # previous extraction so facts are not written out of order.
-        memory_task = asyncio.create_task(
-            _extract_after_previous(pending_memory, key, session, user_text)
-        )
-        session["memory_task"] = memory_task
-
+        # Do not start the secondary fact-extraction model before generating the
+        # reply. On CPU-limited machines, concurrent Ollama requests compete for
+        # the same cores and can make the user-facing response noticeably slower.
         async with httpx.AsyncClient(
             timeout=httpx.Timeout(OLLAMA_TIMEOUT, connect=5.0)
         ) as client:
@@ -1184,9 +1173,13 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         if CHAT_SESSIONS.get(key) is not session:
             return
 
-        # If fact extraction has already finished, include it before sending. Give
-        # it only a short grace period; a slow extractor must never hold up the reply.
-        await asyncio.wait({memory_task}, timeout=0.5)
+        # Start secondary fact extraction only after the main model has finished.
+        # It remains asynchronous and is chained behind any earlier extraction.
+        pending_memory = session.get("memory_task")
+        memory_task = asyncio.create_task(
+            _extract_after_previous(pending_memory, key, session, user_text)
+        )
+        session["memory_task"] = memory_task
 
         if thinking_message is not None:
             try:
