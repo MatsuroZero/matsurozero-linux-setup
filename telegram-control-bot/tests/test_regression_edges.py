@@ -20,6 +20,15 @@ class ArithmeticEdgeCaseTests(unittest.TestCase):
     def test_negative_result(self):
         self.assertEqual(bot._answer_arithmetic_question("3 - 8"), "-5")
 
+    def test_caret_is_treated_as_exponentiation(self):
+        self.assertEqual(bot._answer_arithmetic_question("2^3"), "8")
+
+    def test_negative_integer_exponent_returns_exact_fraction(self):
+        self.assertEqual(bot._answer_arithmetic_question("2**-2"), "1/4")
+
+    def test_rejects_exponent_outside_safe_range(self):
+        self.assertIsNone(bot._answer_arithmetic_question("2**1001"))
+
     def test_rejects_expression_with_code_suffix(self):
         self.assertIsNone(bot._answer_arithmetic_question("1 + 1; print('oops')"))
 
