@@ -679,8 +679,8 @@ class EvidenceCacheTests(unittest.IsolatedAsyncioTestCase):
                 await factual_evidence.retrieve_multi_source_evidence("What is C?")
                 await factual_evidence.retrieve_multi_source_evidence("What is B?")
             self.assertEqual(retrieve.await_count, 4)
-            self.assertIn("what is a?", factual_evidence._EVIDENCE_CACHE)
+            self.assertNotIn("what is a?", factual_evidence._EVIDENCE_CACHE)
             self.assertIn("what is b?", factual_evidence._EVIDENCE_CACHE)
-            self.assertNotIn("what is c?", factual_evidence._EVIDENCE_CACHE)
+            self.assertIn("what is c?", factual_evidence._EVIDENCE_CACHE)
         finally:
             factual_evidence.EVIDENCE_CACHE_MAX_ENTRIES = 128
