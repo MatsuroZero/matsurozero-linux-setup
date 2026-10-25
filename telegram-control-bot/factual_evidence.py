@@ -626,6 +626,22 @@ def detect_evidence_conflicts(evidence):
     conflicts = []
     negation = re.compile(r"\b(?:not|never|without|neither|cannot|no)\b", re.IGNORECASE)
     number_pattern = re.compile(r"(?<![A-Za-z])(?:\d[\d,]*(?:\.\d+)?%?)(?![A-Za-z])")
+    number_words = {
+        "zero", "one", "two", "three", "four", "five", "six", "seven",
+        "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen",
+        "fifteen", "sixteen", "seventeen", "eighteen", "nineteen", "twenty",
+        "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety",
+        "hundred", "thousand", "million", "billion",
+    }
+
+    def numeric_values(sentence):
+        values = set(number_pattern.findall(sentence))
+        words = set(re.findall(r"\\b[a-z]+\\b", sentence.casefold())) & number_words
+        # Word-form values catch obvious disagreements such as "twelve moons"
+        # versus "fourteen moons". Compound numbers are deliberately not parsed.
+        values.update("word:" + word for word in words)
+        return values
+
     for index, left in enumerate(records):
         left_sentences = re.split(r"(?<=[.!?])\s+", str(left.get("excerpt") or ""))
         for right in records[index + 1:]:
@@ -641,8 +657,8 @@ def detect_evidence_conflicts(evidence):
                     if len(shared) < 3 or overlap < 0.6:
                         continue
                     polarity_differs = bool(negation.search(left_sentence)) != bool(negation.search(right_sentence))
-                    left_numbers = set(number_pattern.findall(left_sentence))
-                    right_numbers = set(number_pattern.findall(right_sentence))
+                    left_numbers = numeric_values(left_sentence)
+                    right_numbers = numeric_values(right_sentence)
                     numeric_disagreement = bool(left_numbers and right_numbers and left_numbers.isdisjoint(right_numbers))
                     if polarity_differs or numeric_disagreement:
                         conflict = {
