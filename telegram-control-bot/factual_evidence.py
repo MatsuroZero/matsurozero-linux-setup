@@ -270,6 +270,8 @@ def _unsupported_capitalized_terms(answer, evidence_text):
     common_starters = {
         "the", "this", "that", "these", "those", "there", "here", "however",
         "also", "according", "because", "when", "while", "although", "yes", "no",
+        # Common sentence-initial words are not reliable proper-name signals.
+        "air",
     }
 
     def capitalized_words(text):
