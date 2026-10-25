@@ -29,12 +29,16 @@ class EvidenceRoutingTests(unittest.TestCase):
                     factual_evidence.should_retrieve_factual_evidence(question)
                 )
 
-    def test_current_events_are_not_sent_to_stale_encyclopedia_search(self):
-        self.assertFalse(
-            factual_evidence.should_retrieve_factual_evidence(
-                "What is the latest news today?"
-            )
-        )
+    def test_current_affairs_are_not_sent_to_stale_encyclopedia_search(self):
+        for question in (
+            "What is the latest news today?",
+            "Who is the current president of France?",
+            "What is currently happening in Sudan?",
+        ):
+            with self.subTest(question=question):
+                self.assertFalse(
+                    factual_evidence.should_retrieve_factual_evidence(question)
+                )
 
     def test_recommendations_and_creative_requests_skip_retrieval(self):
         self.assertFalse(
