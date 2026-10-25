@@ -105,6 +105,46 @@ class EvidenceFormattingTests(unittest.TestCase):
         self.assertIn("Wikipedia — Canberra", footer)
         self.assertIn("https://en.wikipedia.org/?curid=123", footer)
 
+    def test_answer_support_uses_answer_specific_terms(self):
+        evidence = {
+            "title": "Canberra",
+            "excerpt": "Canberra is the capital city of Australia.",
+        }
+        result = factual_evidence.assess_answer_support(
+            "What is the capital of Australia?",
+            "Canberra is the capital of Australia.",
+            evidence,
+        )
+        self.assertEqual(result["status"], "candidate_supported")
+        self.assertIn("canberra", result["matched_terms"])
+
+    def test_wrong_city_does_not_look_supported_by_shared_question_words(self):
+        evidence = {
+            "title": "Canberra",
+            "excerpt": "Canberra is the capital city of Australia.",
+        }
+        result = factual_evidence.assess_answer_support(
+            "What is the capital of Australia?",
+            "Sydney is the capital of Australia.",
+            evidence,
+        )
+        self.assertEqual(result["status"], "insufficient_overlap")
+        self.assertNotIn("sydney", result["matched_terms"])
+
+    def test_empty_answer_is_unavailable(self):
+        result = factual_evidence.assess_answer_support(
+            "What is the capital of Australia?", "", {
+                "title": "Canberra",
+                "excerpt": "Canberra is the capital of Australia.",
+            }
+        )
+        self.assertEqual(result["status"], "unavailable")
+
+    def test_warning_does_not_claim_answer_is_false(self):
+        warning = factual_evidence.format_support_warning()
+        self.assertIn("unverified", warning)
+        self.assertNotIn("incorrect", warning)
+
 
 class RetrievalFailureTests(unittest.IsolatedAsyncioTestCase):
     async def test_retrieval_uses_article_extracts_and_selects_top_ranked_page(self):
