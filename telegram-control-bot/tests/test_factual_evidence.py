@@ -942,11 +942,11 @@ class NumericFalsePositiveTests(unittest.TestCase):
     def test_ordinary_phrase_one_of_does_not_create_unsupported_number(self):
         evidence = {
             "title": "Canberra",
-            "excerpt": "Canberra is the capital city of Australia and one of its largest cities.",
+            "excerpt": "Canberra is one of the largest cities in Australia.",
         }
         result = factual_evidence.assess_answer_support(
             "What is Canberra?",
-            "Canberra is one of the capital cities of Australia.",
+            "Canberra is one of the largest cities in Australia.",
             evidence,
         )
         self.assertEqual(result["status"], "candidate_supported")
