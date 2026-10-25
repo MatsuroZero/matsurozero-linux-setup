@@ -204,6 +204,8 @@ def _unsupported_capitalized_terms(answer, evidence_text):
         found = set()
         for raw in str(text or "").split():
             word = raw.strip(".,!?;:\"'()[]{}")
+            if word.endswith("'s"):
+                word = word[:-2]
             if len(word) >= 3 and word[0].isupper() and word[1:].islower():
                 found.add(word.casefold())
         return found
