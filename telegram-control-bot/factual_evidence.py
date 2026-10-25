@@ -27,7 +27,7 @@ def should_retrieve_factual_evidence(question):
     # Keep questions that explicitly reference the user's personal context local.
     # Avoid blocking ordinary educational phrasing such as "How do you calculate...".
     if re.search(
-        r"\b(?:what did i tell you|what do you know about me|what do you remember about me|"
+        r"\b(?:what did i tell you|what do you know about me|what do you (?:currently )?remember about me|"
         r"who are you|what is your opinion|what do you think of me)\b|"
         r"\bmy\s+(?:phone|computer|pc|device|address|name|age|account|password|"
         r"favorite|favourite|family|location|siblings|profile|history)\b",
