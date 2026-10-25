@@ -469,15 +469,32 @@ def assess_answer_support(question, answer, evidence):
                 "reason": "causal_relation_not_explicit_in_evidence",
             }
 
-    # Basic polarity check: shared words alone cannot support a negated claim.
-    negation_pattern = re.compile(r"\b(?:not|never|without|neither|cannot)\b", re.IGNORECASE)
-    if bool(negation_pattern.search(answer_text)) != bool(negation_pattern.search(evidence_text)):
-        return {
-            "status": "insufficient_overlap",
-            "overlap": 0.0,
-            "matched_terms": [],
-            "reason": "polarity_mismatch",
-        }
+    # Compare polarity against the most relevant source sentence, not the
+    # entire extract: an unrelated "not" elsewhere must not validate a claim.
+    negation_pattern = re.compile(r"\b(?:not|never|without|neither|cannot|no)\b", re.IGNORECASE)
+    answer_is_negated = bool(negation_pattern.search(answer_text))
+    evidence_sentences = [
+        sentence for sentence in re.split(r"(?<=[.!?])\s+", evidence_text)
+        if sentence.strip()
+    ]
+    answer_polarity_terms = _content_tokens(answer_text)
+    ranked_sentences = sorted(
+        (
+            len(answer_polarity_terms & _content_tokens(sentence))
+            / max(1, len(answer_polarity_terms)),
+            sentence,
+        )
+        for sentence in evidence_sentences
+    , key=lambda item: item[0], reverse=True)
+    if ranked_sentences and ranked_sentences[0][0] >= 0.5:
+        best_sentence = ranked_sentences[0][1]
+        if answer_is_negated != bool(negation_pattern.search(best_sentence)):
+            return {
+                "status": "insufficient_overlap",
+                "overlap": 0.0,
+                "matched_terms": [],
+                "reason": "polarity_mismatch",
+            }
 
     # Numbers are often the most consequential unsupported details. If an answer
     # introduces a numeric value that does not occur in the extract, fail closed
