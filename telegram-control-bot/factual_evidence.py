@@ -255,6 +255,13 @@ def _content_tokens(text):
         "of", "to", "in", "on", "at", "by", "as", "it", "be", "do", "if",
         "or", "so", "up", "no", "yes", "not", "he", "we", "i", "me", "my",
     }
+    stop_words.update({
+        "zero", "three", "four", "five", "six", "seven", "eight", "nine",
+        "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen",
+        "sixteen", "seventeen", "eighteen", "nineteen", "twenty", "thirty",
+        "forty", "fifty", "sixty", "seventy", "eighty", "ninety",
+        "hundred", "thousand", "million", "billion",
+    })
     return {
         token.casefold()
         for token in _TOKEN_RE.findall(str(text or ""))
@@ -731,15 +738,9 @@ def detect_evidence_conflicts(evidence):
         return number + ("%" if is_percent else "")
 
     def numeric_values(sentence):
-        values = {
-            canonical_number(match.group(0))
-            for match in number_pattern.finditer(sentence)
-        }
-        words = set(re.findall(r"\b[a-z]+\b", sentence.casefold())) & set(number_words)
-        values.update(canonical_number(number_words[word]) for word in words)
-        # Single number words are normalized to the same representation as
-        # digits. Compound number phrases are intentionally not fully parsed.
-        return values
+        # Use the same normalization for answer support and source conflicts so
+        # written-out compound numbers do not disagree with equivalent digits.
+        return _normalized_numeric_values(sentence)
 
     for index, left in enumerate(records):
         left_sentences = re.split(r"(?<=[.!?])\s+", str(left.get("excerpt") or ""))
