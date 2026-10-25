@@ -197,8 +197,44 @@ class EvidenceFormattingTests(unittest.TestCase):
         })
         self.assertIn("Potential reference", footer)
         self.assertIn("not independently verified", footer)
-        self.assertIn("Wikipedia — Canberra", footer)
+        self.assertIn("Wikipedia article extract: Canberra", footer)
         self.assertIn("https://en.wikipedia.org/?curid=123", footer)
+
+    def test_prompt_includes_allow_listed_stackoverflow_primary_and_extra_sources(self):
+        prompt = factual_evidence.format_evidence_for_prompt({
+            "title": "Installing Python on Linux",
+            "excerpt": "Use the package manager to install Python.",
+            "url": "https://stackoverflow.com/a/123",
+            "source": "Stack Overflow accepted answer",
+            "additional_sources": [{
+                "title": "Python",
+                "excerpt": "Python is a programming language.",
+                "url": "https://en.wikipedia.org/?curid=789",
+                "source": "Wikipedia article extract",
+            }],
+        })
+        self.assertIn("Installing Python on Linux", prompt)
+        self.assertIn("Use the package manager to install Python.", prompt)
+        self.assertIn("Python is a programming language.", prompt)
+        self.assertIn("https://stackoverflow.com/a/123", prompt)
+        self.assertIn("https://en.wikipedia.org/?curid=789", prompt)
+
+    def test_attribution_lists_multiple_allow_listed_sources(self):
+        footer = factual_evidence.format_source_attribution({
+            "title": "Installing Python on Linux",
+            "excerpt": "Use the package manager to install Python.",
+            "url": "https://stackoverflow.com/a/123",
+            "source": "Stack Overflow accepted answer",
+            "additional_sources": [{
+                "title": "Python",
+                "excerpt": "Python is a programming language.",
+                "url": "https://en.wikipedia.org/?curid=789",
+                "source": "Wikipedia article extract",
+            }],
+        })
+        self.assertIn("https://stackoverflow.com/a/123", footer)
+        self.assertIn("https://en.wikipedia.org/?curid=789", footer)
+        self.assertIn("not independently verified", footer)
 
     def test_answer_support_uses_answer_specific_terms(self):
         evidence = {
