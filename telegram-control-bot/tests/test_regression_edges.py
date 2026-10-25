@@ -45,8 +45,8 @@ class PromptMemorySelectionTests(unittest.TestCase):
     def test_retrieves_only_relevant_tagged_saved_facts(self):
         memory = {
             "profile": (
-                "ABOUT MATTHEW: Matthew is a law student.\\n"
-                "GAMING AND MEDIA: Matthew enjoys Terraria.\\n"
+                "ABOUT MATTHEW: Matthew is a law student.\n"
+                "GAMING AND MEDIA: Matthew enjoys Terraria.\n"
                 "FOOD: Matthew likes pizza."
             ),
             "facts": [
