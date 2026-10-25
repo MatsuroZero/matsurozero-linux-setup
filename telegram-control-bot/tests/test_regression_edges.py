@@ -1,0 +1,69 @@
+"""Additional edge-case tests for deterministic bot behavior."""
+import sys
+import unittest
+from pathlib import Path
+
+BOT_DIR = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(BOT_DIR))
+
+import bot  # noqa: E402
+
+
+class ArithmeticEdgeCaseTests(unittest.TestCase):
+    def test_parentheses_and_precedence(self):
+        self.assertEqual(bot._answer_arithmetic_question("(2 + 3) * 4"), "20")
+
+    def test_integer_division_returns_exact_integer(self):
+        self.assertEqual(bot._answer_arithmetic_question("12 / 3"), "4")
+
+    def test_negative_result(self):
+        self.assertEqual(bot._answer_arithmetic_question("3 - 8"), "-5")
+
+    def test_rejects_expression_with_code_suffix(self):
+        self.assertIsNone(bot._answer_arithmetic_question("1 + 1; print('oops')"))
+
+    def test_rejects_empty_input(self):
+        self.assertIsNone(bot._answer_arithmetic_question("   "))
+
+
+class MemoryEdgeCaseTests(unittest.TestCase):
+    def setUp(self):
+        self.session = {"temporary_facts": []}
+
+    def test_caps_temporary_facts_at_twenty(self):
+        for index in range(25):
+            self.assertTrue(
+                bot._add_temporary_fact(self.session, "gaming", f"Fact {index}")
+            )
+        facts = self.session["temporary_facts"]
+        self.assertEqual(len(facts), 20)
+        self.assertEqual(facts[0]["fact"], "Fact 5")
+        self.assertEqual(facts[-1]["fact"], "Fact 24")
+
+    def test_does_not_recall_facts_from_assistant_claims(self):
+        history = [
+            {"role": "assistant", "content": "Your favorite game is Minecraft."}
+        ]
+        self.assertIsNone(
+            bot._answer_from_recent_disclosures("What's my favorite game?", history)
+        )
+
+    def test_does_not_guess_when_no_disclosure_exists(self):
+        history = [{"role": "user", "content": "I played a game yesterday."}]
+        self.assertIsNone(
+            bot._answer_from_recent_disclosures("What's my favorite game?", history)
+        )
+
+    def test_latest_explicit_favorite_game_wins(self):
+        history = [
+            {"role": "user", "content": "Minecraft is my favorite game."},
+            {"role": "user", "content": "Actually, Terraria is my favorite game."},
+        ]
+        self.assertEqual(
+            bot._answer_from_recent_disclosures("What's my favorite game?", history),
+            "You said Terraria is your favorite game.",
+        )
+
+
+if __name__ == "__main__":
+    unittest.main()
