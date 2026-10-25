@@ -40,7 +40,7 @@ def should_retrieve_factual_evidence(question):
 
     # Arithmetic should stay on the deterministic local fast path, including
     # natural-language forms such as "What is 19 * 23?".
-    if re.fullmatch(r"[\d\s()+*/%.^\-=?]+", text) and re.search(r"[+*/%^]|\d\s+-", text):
+    if re.search(r"(?<!\w)\d+\s*(?:\*\*|//|[+*/%^])\s*[+-]?\d+(?!\w)", text):
         return False
 
     return bool(re.match(
