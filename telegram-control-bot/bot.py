@@ -4,7 +4,13 @@ from fractions import Fraction
 import json
 import logging
 import httpx
-from factual_evidence import format_evidence_for_prompt, format_source_attribution, retrieve_wikipedia_evidence
+from factual_evidence import (
+    assess_answer_support,
+    format_evidence_for_prompt,
+    format_source_attribution,
+    format_support_warning,
+    retrieve_wikipedia_evidence,
+)
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Thread
 import os
@@ -1437,7 +1443,15 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         # Small models sometimes echo a sentence or paragraph inside one answer.
         answer = _deduplicate_answer_text(answer)
         if evidence_prompt:
-            answer += format_source_attribution(evidence)
+            support = assess_answer_support(user_text, answer, evidence)
+            if support["status"] == "candidate_supported":
+                answer += format_source_attribution(evidence)
+            else:
+                # This is only a lexical overlap check, not proof of correctness.
+                # Be transparent when the generated answer doesn't visibly match
+                # the retrieved extract instead of presenting the source as support.
+                answer += format_support_warning()
+                answer += format_source_attribution(evidence)
         if CHAT_SESSIONS.get(key) is not session:
             return
 
