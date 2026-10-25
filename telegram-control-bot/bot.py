@@ -1086,7 +1086,7 @@ def _answer_from_recent_disclosures(user_text, prior_history):
     if not isinstance(prior_history, list):
         return None
 
-    if re.search(r"\b(?:what(?:'s| is)\s+)?my\s+favorite\s+game\b|\bwhat\s+game\s+did\s+i\s+say", query):
+    if re.search(r"\b(?:what(?:'s|s| is)\s+)?my\s+favorite\s+game\b|\bwhat\s+game\s+did\s+i\s+say", query):
         for item in reversed(prior_history):
             if not isinstance(item, dict) or item.get("role") != "user":
                 continue
