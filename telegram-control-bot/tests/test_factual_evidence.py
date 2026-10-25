@@ -754,3 +754,45 @@ class ClaimLevelSupportTests(unittest.TestCase):
         self.assertEqual(result["status"], "insufficient_overlap")
         self.assertEqual(len(result["claims"]), 2)
         self.assertEqual(len(result["unsupported_claims"]), 1)
+
+
+
+class ParaphraseNormalizationRegressionTests(unittest.TestCase):
+    def test_government_seat_paraphrase_is_candidate_supported(self):
+        evidence = {
+            "title": "Canberra",
+            "excerpt": "Canberra is the capital city of Australia.",
+        }
+        result = factual_evidence.assess_claim_level_support(
+            "What is Australia's capital?",
+            "Canberra serves as Australia's seat of government.",
+            evidence,
+        )
+        self.assertEqual(result["status"], "candidate_supported")
+
+    def test_sky_color_paraphrase_is_not_rejected_for_sentence_initial_air(self):
+        evidence = {
+            "title": "Rayleigh scattering",
+            "excerpt": (
+                "The sky appears blue because air molecules scatter shorter blue "
+                "wavelengths of sunlight more strongly than longer red wavelengths."
+            ),
+        }
+        result = factual_evidence.assess_claim_level_support(
+            "What causes the sky to look blue?",
+            "Air molecules scatter blue sunlight more strongly than red sunlight.",
+            evidence,
+        )
+        self.assertEqual(result["status"], "candidate_supported")
+
+    def test_paraphrase_normalization_does_not_accept_unrelated_claim(self):
+        evidence = {
+            "title": "Canberra",
+            "excerpt": "Canberra is the capital city of Australia.",
+        }
+        result = factual_evidence.assess_claim_level_support(
+            "What is Australia's capital?",
+            "Canberra secretly hosts a hidden spaceport run by aliens.",
+            evidence,
+        )
+        self.assertEqual(result["status"], "insufficient_overlap")
