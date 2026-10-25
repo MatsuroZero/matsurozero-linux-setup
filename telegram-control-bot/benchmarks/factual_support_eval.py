@@ -92,6 +92,13 @@ CASES = [
         "expected": "insufficient_overlap",
     },
     {
+        "name": "correct fact plus unsupported descriptive detail",
+        "question": "What is the capital of Australia?",
+        "answer": "Canberra is Australia's capital and has excellent nightlife.",
+        "evidence": {"title": "Canberra", "excerpt": "Canberra is the capital city of Australia."},
+        "expected": "insufficient_overlap",
+    },
+    {
         "name": "right answer with extra wording",
         "question": "Which planet is largest in the Solar System?",
         "answer": "Jupiter is the largest planet in the Solar System.",
