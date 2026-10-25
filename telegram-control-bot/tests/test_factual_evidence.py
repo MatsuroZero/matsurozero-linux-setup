@@ -910,3 +910,31 @@ class ParaphraseNormalizationRegressionTests(unittest.TestCase):
             evidence,
         )
         self.assertEqual(result["status"], "insufficient_overlap")
+
+class CompoundNumberNormalizationTests(unittest.TestCase):
+    def test_compound_number_words_match_digit_form_in_support_check(self):
+        evidence = {
+            "title": "Planet X",
+            "excerpt": "Planet X has 21 moons and is a distant planet.",
+        }
+        result = factual_evidence.assess_answer_support(
+            "How many moons does Planet X have?",
+            "Planet X has twenty one moons and is a distant planet.",
+            evidence,
+        )
+        self.assertEqual(result["status"], "candidate_supported")
+
+    def test_hundred_phrase_matches_digit_form_in_source_conflict_check(self):
+        evidence = {
+            "title": "Example",
+            "excerpt": "The system processed 124 requests.",
+            "url": "https://en.wikipedia.org/?curid=123",
+            "additional_sources": [{
+                "title": "Example facts",
+                "excerpt": "The system processed one hundred and twenty four requests.",
+                "url": "https://stackoverflow.com/a/123",
+                "source": "Stack Overflow answer",
+            }],
+        }
+        self.assertEqual(factual_evidence.detect_evidence_conflicts(evidence), [])
+\n
