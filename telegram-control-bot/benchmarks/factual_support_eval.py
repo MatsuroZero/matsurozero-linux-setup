@@ -17,7 +17,7 @@ import sys
 BOT_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BOT_DIR))
 
-from factual_evidence import assess_answer_support  # noqa: E402
+from factual_evidence import assess_answer_support, assess_claim_level_support  # noqa: E402
 
 
 CASES = [
@@ -108,6 +108,19 @@ CASES = [
 ]
 
 
+CLAIM_CASES = [
+    {"name":"supported single claim","question":"What is the capital of Australia?","answer":"Canberra is the capital city of Australia.","evidence":{"title":"Canberra","excerpt":"Canberra is the capital city of Australia."},"expected":"candidate_supported"},
+    {"name":"supported plus unsupported descriptive claim","question":"What is the capital of Australia?","answer":"Canberra is the capital city of Australia. It has excellent nightlife.","evidence":{"title":"Canberra","excerpt":"Canberra is the capital city of Australia."},"expected":"insufficient_overlap"},
+    {"name":"supported plus unsupported number","question":"What is the capital of Australia?","answer":"Canberra is the capital city of Australia. It has 900 million residents.","evidence":{"title":"Canberra","excerpt":"Canberra is the capital city of Australia."},"expected":"insufficient_overlap"},
+    {"name":"supported plus unsupported proper name","question":"What is the capital of Australia?","answer":"Canberra is the capital city of Australia. Matthew founded it in 1820.","evidence":{"title":"Canberra","excerpt":"Canberra is the capital city of Australia."},"expected":"insufficient_overlap"},
+    {"name":"wrong entity with topic overlap","question":"Who developed general relativity?","answer":"Isaac Newton developed the theory of general relativity.","evidence":{"title":"General relativity","excerpt":"Albert Einstein developed the theory of general relativity."},"expected":"insufficient_overlap"},
+    {"name":"contradictory polarity","question":"Is Canberra the capital of Australia?","answer":"Canberra is not the capital city of Australia.","evidence":{"title":"Canberra","excerpt":"Canberra is the capital city of Australia."},"expected":"insufficient_overlap"},
+    {"name":"supported bullet then unsupported bullet","question":"Which planet is largest?","answer":"- Jupiter is the largest planet in the Solar System.\n- Jupiter has 80 moons.","evidence":{"title":"Jupiter","excerpt":"Jupiter is the largest planet in the Solar System."},"expected":"insufficient_overlap"},
+    {"name":"all claims supported","question":"What is Canberra?","answer":"Canberra is the capital city of Australia. Canberra is located in the Australian Capital Territory.","evidence":{"title":"Canberra","excerpt":"Canberra is the capital city of Australia. Canberra is located in the Australian Capital Territory."},"expected":"candidate_supported"},
+    {"name":"unsupported numeric claim","question":"What percentage of atmosphere is oxygen?","answer":"Oxygen makes up 21 percent of the atmosphere.","evidence":{"title":"Atmosphere","excerpt":"The atmosphere contains oxygen and nitrogen."},"expected":"insufficient_overlap"},
+    {"name":"empty answer","question":"What is Canberra?","answer":"","evidence":{"title":"Canberra","excerpt":"Canberra is the capital city of Australia."},"expected":"unavailable"}
+]
+
 def main() -> int:
     rows = []
     false_accepts = 0
@@ -146,9 +159,31 @@ def main() -> int:
         "warning": "Synthetic diagnostic only; lexical overlap is not truth verification.",
         "results": rows,
     }
+    claim_rows = []
+    claim_false_accepts = claim_false_rejections = 0
+    claim_true_accepts = claim_true_rejections = 0
+    for case in CLAIM_CASES:
+        actual = assess_claim_level_support(case["question"], case["answer"], case["evidence"])["status"]
+        expected = case["expected"]
+        claim_false_accepts += expected == "insufficient_overlap" and actual == "candidate_supported"
+        claim_false_rejections += expected == "candidate_supported" and actual != "candidate_supported"
+        claim_true_accepts += expected == "candidate_supported" and actual == "candidate_supported"
+        claim_true_rejections += expected == "insufficient_overlap" and actual == "insufficient_overlap"
+        claim_rows.append({"case": case["name"], "expected": expected, "actual": actual, "match": actual == expected})
+    summary["claim_level_evaluation"] = {
+        "cases": len(claim_rows),
+        "matches": sum(row["match"] for row in claim_rows),
+        "match_rate": round(sum(row["match"] for row in claim_rows) / len(claim_rows), 3),
+        "true_accepts": claim_true_accepts,
+        "true_rejections": claim_true_rejections,
+        "false_accepts": claim_false_accepts,
+        "false_rejections": claim_false_rejections,
+        "precision": round(claim_true_accepts / (claim_true_accepts + claim_false_accepts), 3) if claim_true_accepts + claim_false_accepts else None,
+        "recall": round(claim_true_accepts / (claim_true_accepts + claim_false_rejections), 3) if claim_true_accepts + claim_false_rejections else None,
+        "results": claim_rows,
+    }
     print(json.dumps(summary, indent=2))
-    # This is an observational benchmark: known heuristic limitations should be
-    # visible in the metrics, not mistaken for a CI/runtime failure.
+    # Observational benchmark: limitations are reported, not treated as CI failure.
     return 0
 
 
