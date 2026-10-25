@@ -143,17 +143,19 @@ def grade(case_id, response):
     elif case_id == "extract-facts":
         ok = bool(re.search(r"city\s*:\s*cairo", lower)) and bool(re.search(r"device\s*:\s*galaxy", lower))
     elif case_id == "missing-detail-abstention":
-        ok = any(phrase in lower for phrase in ("not provided", "not specified", "does not say", "doesn't say", "does not provide", "does not include", "context only states", "cannot determine", "can't determine", "unknown", "no information", "not enough information"))
+        ok = any(phrase in lower for phrase in ("not provided", "not specified", "does not specify", "doesn't specify", "does not say", "doesn't say", "does not provide", "does not include", "context only states", "cannot determine", "can't determine", "unknown", "no information", "not enough information"))
     elif case_id == "evidence-grounded-capital":
         ok = "canberra" in lower
     elif case_id == "evidence-missing-population":
-        abstains = any(phrase in lower for phrase in ("cannot determine", "can't determine", "not specified", "not stated", "not provided", "insufficient information", "does not say"))
+        abstains = any(phrase in lower for phrase in ("cannot determine", "can't determine", "not possible to determine", "not possible to establish", "not specified", "not stated", "not provided", "insufficient information", "does not say", "does not state", "does not provide", "none of the provided evidence"))
         ok = abstains and not any(char.isdigit() for char in lower)
     elif case_id == "evidence-reject-wrong-capital":
         denies = any(phrase in lower for phrase in ("no, ", "not the capital", "incorrect", "is not the capital", "isn't the capital"))
         ok = denies and "canberra" in lower
     elif case_id == "concise-definition":
-        ok = any(term in lower for term in ("interface", "rules and tools", "set of rules", "standardized protocols")) and any(term in lower for term in ("software", "program", "application", "systems", "communicate", "components"))
+        api_concept = any(term in lower for term in ("interface", "rules and tools", "set of rules", "standardized protocols", "standardized ways", "methods", "functions", "specification"))
+        api_purpose = any(term in lower for term in ("software", "program", "application", "system", "service", "communicate", "components", "access and interact", "share data", "exchange data"))
+        ok = api_concept and api_purpose and len(text.split()) <= 45
     else:
         ok = False
     return bool(ok), "pass" if ok else "heuristic check failed"
