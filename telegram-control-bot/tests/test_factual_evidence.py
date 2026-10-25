@@ -937,4 +937,4 @@ class CompoundNumberNormalizationTests(unittest.TestCase):
             }],
         }
         self.assertEqual(factual_evidence.detect_evidence_conflicts(evidence), [])
-\n
+
