@@ -292,6 +292,22 @@ def _unsupported_capitalized_terms(answer, evidence_text):
     return sorted(answer_terms - evidence_terms)
 
 
+def _has_reversed_capital_relation(answer_text, evidence_text):
+    """Catch a narrow but dangerous relation reversal the token heuristic misses."""
+    pattern = re.compile(
+        r"\b([A-Z][a-z]+)\s+is\s+(?:the\s+)?capital(?:\s+city)?\s+of\s+([A-Z][a-z]+)\b"
+    )
+    answer_pairs = {
+        (left.casefold(), right.casefold())
+        for left, right in pattern.findall(str(answer_text or ""))
+    }
+    evidence_pairs = {
+        (left.casefold(), right.casefold())
+        for left, right in pattern.findall(str(evidence_text or ""))
+    }
+    return any((right, left) in evidence_pairs for left, right in answer_pairs)
+
+
 def assess_answer_support(question, answer, evidence):
     """Estimate lexical support; this is not a truth or contradiction detector.
 
@@ -314,6 +330,13 @@ def assess_answer_support(question, answer, evidence):
         str(item.get("title") or "") + " " + str(item.get("excerpt") or "")
         for item in records if isinstance(item, dict)
     )
+    if _has_reversed_capital_relation(answer_text, evidence_text):
+        return {
+            "status": "insufficient_overlap",
+            "overlap": 0.0,
+            "matched_terms": [],
+            "reason": "reversed_capital_relation",
+        }
     answer_terms = _content_tokens(answer_text)
     evidence_terms = _content_tokens(evidence_text)
     question_terms = _content_tokens(question)
