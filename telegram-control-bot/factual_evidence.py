@@ -363,13 +363,13 @@ def assess_claim_level_support(question, answer, evidence):
     if not text:
         return {"status": "unavailable", "claims": [], "unsupported_claims": []}
     claims = []
-    for line in re.split(r"[\\r\\n]+", text):
-        line = re.sub(r"^\\s*(?:[-*•]+|\\d+[.)])\\s*", "", line).strip()
+    for line in re.split(r"[\r\n]+", text):
+        line = re.sub(r"^\s*(?:[-*•]+|\d+[.)])\s*", "", line).strip()
         if not line:
             continue
         claims.extend(
             part.strip()
-            for part in re.split(r"(?<=[.!?])\\s+", line)
+            for part in re.split(r"(?<=[.!?])\s+", line)
             if part.strip()
         )
     if not claims:
