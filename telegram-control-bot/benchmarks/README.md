@@ -1,8 +1,9 @@
-# Local Ollama smoke benchmark
+# Local Ollama quality and latency benchmark
 
-This optional benchmark compares the same six short prompts across local Ollama
-models and records request latency, Ollama-reported duration, token counts, and
-raw answers. It is a repeatable smoke test, not a comprehensive quality score.
+This optional benchmark compares twelve general-purpose prompts across local
+Ollama models. It records response latency, Ollama-reported duration, model
+load time, token counts, estimated generation throughput, raw answers, and
+transparent heuristic checks for obvious requirements.
 
 From the repository root, with Ollama running:
 
@@ -13,12 +14,15 @@ python telegram-control-bot/benchmarks/ollama_smoke.py \
   --output ollama-smoke-results.json
 ```
 
-It makes sequential requests and does not alter the bot service or model config.
-The first request for a model may include model-load time; rerun the benchmark
-to compare warm runs, and keep the model list, prompts, settings, and hardware
-constant when comparing results. Do not treat one run as a reliable latency
-estimate.
+It makes sequential requests, keeps each model alive for ten minutes, uses a
+fixed seed and temperature zero, and does not alter the bot service or global
+Ollama configuration. A first request may still include model-load time.
+Rerun to compare warm runs; keep model list, prompts, settings, and hardware
+constant when comparing results.
 
-Review the recorded answers as well as timing. The harness reports outputs
-without automatically grading nuanced language quality; the deterministic
-unit tests remain the correctness gate for arithmetic and memory routing.
+The quality pass rate is **not** a comprehensive model score. Checks look for
+simple observable properties such as the expected arithmetic result, requested
+list length, grounded recall, and explicit abstention when a fact is missing.
+They can miss incorrect reasoning and can occasionally flag a valid paraphrase.
+Review the raw answers too. The deterministic unit tests remain the correctness
+gate for arithmetic and memory routing.
