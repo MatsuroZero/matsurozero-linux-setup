@@ -444,13 +444,30 @@ def assess_answer_support(question, answer, evidence):
         r"as a result|leads? to|resulting in|consequently)\b",
         re.IGNORECASE,
     )
-    if causal_pattern.search(answer_text) and not causal_pattern.search(evidence_text):
-        return {
-            "status": "insufficient_overlap",
-            "overlap": 0.0,
-            "matched_terms": [],
-            "reason": "causal_relation_not_explicit_in_evidence",
-        }
+    if causal_pattern.search(answer_text):
+        causal_evidence_sentences = [
+            sentence for sentence in re.split(r"(?<=[.!?])\\s+", evidence_text)
+            if causal_pattern.search(sentence)
+        ]
+        answer_causal_terms = _content_tokens(answer_text)
+        best_causal_overlap = max(
+            (
+                len(answer_causal_terms & _content_tokens(sentence))
+                / max(1, len(answer_causal_terms))
+                for sentence in causal_evidence_sentences
+            ),
+            default=0.0,
+        )
+        # A causal cue elsewhere in the retrieved text must not authorize an
+        # unrelated causal claim. Require the cue and relevant claim vocabulary
+        # to occur in the same source sentence.
+        if not causal_evidence_sentences or best_causal_overlap < 0.5:
+            return {
+                "status": "insufficient_overlap",
+                "overlap": round(best_causal_overlap, 3),
+                "matched_terms": [],
+                "reason": "causal_relation_not_explicit_in_evidence",
+            }
 
     # Basic polarity check: shared words alone cannot support a negated claim.
     negation_pattern = re.compile(r"\b(?:not|never|without|neither|cannot)\b", re.IGNORECASE)
