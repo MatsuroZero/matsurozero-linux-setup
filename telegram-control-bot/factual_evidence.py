@@ -198,11 +198,28 @@ def assess_answer_support(question, answer, evidence):
     if not isinstance(evidence, dict) or not str(answer or "").strip():
         return {"status": "unavailable", "overlap": 0.0, "matched_terms": []}
 
-    answer_terms = _content_tokens(answer)
-    evidence_terms = _content_tokens(
+    answer_text = str(answer or "")
+    evidence_text = (
         str(evidence.get("title") or "") + " " + str(evidence.get("excerpt") or "")
     )
+    answer_terms = _content_tokens(answer_text)
+    evidence_terms = _content_tokens(evidence_text)
     question_terms = _content_tokens(question)
+
+    # Numbers are often the most consequential unsupported details. If an answer
+    # introduces a numeric value that does not occur in the extract, fail closed
+    # for this lightweight check rather than letting topic-word overlap hide it.
+    numeric_pattern = re.compile(r"(?<![A-Za-z])(?:\d[\d,]*(?:\.\d+)?%?)(?![A-Za-z])")
+    answer_numbers = set(numeric_pattern.findall(answer_text))
+    evidence_numbers = set(numeric_pattern.findall(evidence_text))
+    unsupported_numbers = sorted(answer_numbers - evidence_numbers)
+    if unsupported_numbers:
+        return {
+            "status": "insufficient_overlap",
+            "overlap": 0.0,
+            "matched_terms": [],
+            "unsupported_numbers": unsupported_numbers[:8],
+        }
     # Question words alone should not make an answer appear supported.
     claim_terms = answer_terms - question_terms
     if not claim_terms:
