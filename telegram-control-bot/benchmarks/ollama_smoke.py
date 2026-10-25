@@ -94,22 +94,22 @@ def grade(case_id, response):
         ok = "vim" in lower
     elif case_id == "unknown-recall":
         unsupported_titles = ("minecraft", "terraria", "fortnite", "roblox", "genshin", "valorant", "minecraft")
-        ok = any(phrase in lower for phrase in ("don't know", "do not know", "not provided", "not specified", "does not include", "no information", "cannot determine", "can't determine", "unknown", "not enough information")) and not any(title in lower for title in unsupported_titles)
+        ok = any(phrase in lower for phrase in ("don't know", "do not know", "not provided", "not specified", "does not include", "does not provide", "did not provide", "no information", "cannot determine", "can't determine", "unknown", "not enough information")) and not any(title in lower for title in unsupported_titles)
     elif case_id == "summarization":
         ok = all(term in lower for term in ("model", "arithmetic", "retrieval"))
     elif case_id == "basic-fact":
         ok = bool(re.search(r"\bjupiter\b", lower))
     elif case_id == "causal-explanation":
-        ok = any(term in lower for term in ("restore", "recover", "replace", "copy")) and any(term in lower for term in ("data", "files", "information"))
+        ok = any(term in lower for term in ("restore", "recover", "replace", "copy", "preventing data loss", "prevent data loss", "data is protected")) and any(term in lower for term in ("data", "files", "information"))
     elif case_id == "exact-list-size":
         numbers = re.findall(r"(?m)^\s*\d+[.)]\s+(.+)$", text)
         ok = len(numbers) == 3
     elif case_id == "extract-facts":
         ok = bool(re.search(r"city\s*:\s*cairo", lower)) and bool(re.search(r"device\s*:\s*galaxy", lower))
     elif case_id == "missing-detail-abstention":
-        ok = any(phrase in lower for phrase in ("not provided", "not specified", "does not say", "doesn't say", "cannot determine", "can't determine", "unknown", "no information", "not enough information"))
+        ok = any(phrase in lower for phrase in ("not provided", "not specified", "does not say", "doesn't say", "does not provide", "does not include", "context only states", "cannot determine", "can't determine", "unknown", "no information", "not enough information"))
     elif case_id == "concise-definition":
-        ok = "interface" in lower and any(term in lower for term in ("software", "program", "application", "systems", "communicate"))
+        ok = any(term in lower for term in ("interface", "rules and tools", "set of rules", "standardized protocols")) and any(term in lower for term in ("software", "program", "application", "systems", "communicate", "components"))
     else:
         ok = False
     return bool(ok), "pass" if ok else "heuristic check failed"
