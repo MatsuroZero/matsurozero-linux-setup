@@ -6,6 +6,7 @@ the model to abstain when the excerpt does not answer the question.
 """
 import html
 import re
+from urllib.parse import urlparse
 
 import httpx
 
@@ -37,7 +38,8 @@ def should_retrieve_factual_evidence(question):
     if any(re.search(pattern, lowered) for pattern in excluded):
         return False
 
-    # Arithmetic should stay on the deterministic local fast path.
+    # Arithmetic should stay on the deterministic local fast path, including
+    # natural-language forms such as "What is 19 * 23?".
     if re.fullmatch(r"[\d\s()+*/%.^\-=?]+", text) and re.search(r"[+*/%^]|\d\s+-", text):
         return False
 
@@ -111,7 +113,7 @@ def format_evidence_for_prompt(evidence):
     title = _clean_excerpt(evidence.get("title"))
     excerpt = _clean_excerpt(evidence.get("excerpt"))
     url = str(evidence.get("url") or "").strip()
-    if not title or not excerpt or not url.startswith("https://en.wikipedia.org/"):
+    if not title or not excerpt or urlparse(url).scheme != "https" or urlparse(url).hostname != "en.wikipedia.org":
         return ""
     return (
         "CANDIDATE EXTERNAL EVIDENCE (retrieved for this question; not guaranteed complete):\n"
@@ -129,6 +131,6 @@ def format_source_attribution(evidence):
         return ""
     title = _clean_excerpt(evidence.get("title"))
     url = str(evidence.get("url") or "").strip()
-    if not title or not url.startswith("https://en.wikipedia.org/"):
+    if not title or urlparse(url).scheme != "https" or urlparse(url).hostname != "en.wikipedia.org":
         return ""
     return f"\n\nReference: Wikipedia — {title}\n{url}"
