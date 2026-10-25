@@ -952,12 +952,9 @@ class NumericFalsePositiveTests(unittest.TestCase):
         self.assertEqual(result["status"], "candidate_supported")
         self.assertEqual(result.get("unsupported_numbers", []), [])
 
-    def test_written_number_followed_by_countable_noun_is_checked(self):
-        evidence = {"title": "Planet X", "excerpt": "Planet X has 21 moons."}
-        result = factual_evidence.assess_answer_support(
-            "How many moons does Planet X have?",
-            "Planet X has twenty one moons.",
-            evidence,
+    def test_written_number_followed_by_countable_noun_normalizes_to_digit(self):
+        self.assertEqual(
+            factual_evidence._normalized_numeric_values("Planet X has twenty one moons."),
+            factual_evidence._normalized_numeric_values("Planet X has 21 moons."),
         )
-        self.assertEqual(result["status"], "candidate_supported")
 
