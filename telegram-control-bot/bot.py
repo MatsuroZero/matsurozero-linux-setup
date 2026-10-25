@@ -700,6 +700,26 @@ def _add_temporary_fact(session, category, fact):
         return False
     existing = session.setdefault("temporary_facts", [])
     normalized = re.sub(r"[^a-z0-9]+", " ", fact.casefold()).strip()
+
+    # Singular explicit preferences should update in place instead of leaving
+    # contradictory "favorite X" facts side by side in the prompt.
+    favorite = re.match(r"^Matthew's favorite (anime|game|food|movie|show|book|song|artist) is (.+)$", fact, flags=re.I)
+    if favorite:
+        kind = favorite.group(1).casefold()
+        retained = []
+        for item in existing:
+            if not isinstance(item, dict):
+                continue
+            old_fact = str(item.get("fact", "")).strip()
+            old_favorite = re.match(
+                r"^Matthew's favorite (anime|game|food|movie|show|book|song|artist) is (.+)$",
+                old_fact, flags=re.I,
+            )
+            if old_favorite and old_favorite.group(1).casefold() == kind:
+                continue
+            retained.append(item)
+        existing[:] = retained
+
     for item in existing:
         if not isinstance(item, dict):
             continue
