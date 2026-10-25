@@ -86,10 +86,10 @@ def grade(case_id, response):
     if case_id == "direct-answer":
         ok = "ram" in lower and any(word in lower for word in ("temporary", "quick", "access", "store"))
     elif case_id == "follow-two-instructions":
-        numbers = re.findall(r"(?m)^\\s*\\d+[.)]\\s+(.+)$", text)
+        numbers = re.findall(r"(?m)^\s*\d+[.)]\s+(.+)$", text)
         ok = len(numbers) == 2 and all(len(item.split()) <= 12 for item in numbers)
     elif case_id == "mixed-request":
-        ok = bool(re.search(r"(?<!\\d)437(?!\\d)", text)) and len(text.split()) >= 8
+        ok = bool(re.search(r"(?<!\d)437(?!\d)", text)) and len(text.split()) >= 8
     elif case_id == "grounded-recall":
         ok = "vim" in lower
     elif case_id == "unknown-recall":
@@ -98,14 +98,14 @@ def grade(case_id, response):
     elif case_id == "summarization":
         ok = all(term in lower for term in ("model", "arithmetic", "retrieval"))
     elif case_id == "basic-fact":
-        ok = bool(re.search(r"\\bjupiter\\b", lower))
+        ok = bool(re.search(r"\bjupiter\b", lower))
     elif case_id == "causal-explanation":
         ok = any(term in lower for term in ("restore", "recover", "replace", "copy")) and any(term in lower for term in ("data", "files", "information"))
     elif case_id == "exact-list-size":
-        numbers = re.findall(r"(?m)^\\s*\\d+[.)]\\s+(.+)$", text)
+        numbers = re.findall(r"(?m)^\s*\d+[.)]\s+(.+)$", text)
         ok = len(numbers) == 3
     elif case_id == "extract-facts":
-        ok = bool(re.search(r"city\\s*:\\s*cairo", lower)) and bool(re.search(r"device\\s*:\\s*galaxy", lower))
+        ok = bool(re.search(r"city\s*:\s*cairo", lower)) and bool(re.search(r"device\s*:\s*galaxy", lower))
     elif case_id == "missing-detail-abstention":
         ok = any(phrase in lower for phrase in ("not provided", "not specified", "does not say", "doesn't say", "cannot determine", "can't determine", "unknown", "no information", "not enough information"))
     elif case_id == "concise-definition":
