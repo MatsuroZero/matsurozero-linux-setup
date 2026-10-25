@@ -319,6 +319,7 @@ async def menu_page_text(action):
             "/chat   Start a private Ollama chat and choose an installed model\n"
             "/bye    End the active Ollama chat\n"
             "/memory Show persistent Ollama memory\n"
+            "/profile <text> Set Ollama's persistent user profile\n"
             "/remember <fact> Save a detail for future Ollama chats\n"
             "/forget <text> Remove matching saved details\n"
             "Power actions require confirmation and expire after 60 seconds.\n\n"
@@ -692,7 +693,8 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
     message = update.effective_message
     text = message.text if message else None
 
-    if text and text.strip().split(maxsplit=1)[0].split("@", 1)[0].lower() == "/bye":
+    command_word = text.strip().split(maxsplit=1)[0].split("@", 1)[0].lower() if text and text.strip() else ""
+    if command_word == "/bye":
         task = session.get("task")
         CHAT_SESSIONS.pop(key, None)
         if task and task is not asyncio.current_task() and not task.done():
@@ -779,6 +781,24 @@ async def ollama_memory_command(update: Update, context: ContextTypes.DEFAULT_TY
     text = "\n".join(lines)
     for chunk in _split_telegram_text(text):
         await update.effective_message.reply_text(chunk)
+
+
+async def ollama_profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await guard(update):
+        return
+    profile = " ".join(context.args).strip()
+    memory = _load_ollama_memory()
+    if not profile:
+        await update.effective_message.reply_text(
+            "Usage: /profile <personal instructions and preferences>\n"
+            "This replaces the persistent profile section. Use /memory to inspect it."
+        )
+        return
+    memory["profile"] = profile[:6000]
+    _save_ollama_memory(memory)
+    await update.effective_message.reply_text(
+        "🧠 Persistent Ollama profile updated. It will be included in future chats."
+    )
 
 
 async def ollama_remember_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1704,6 +1724,7 @@ COMMAND_DESCRIPTIONS = [
     BotCommand("chat", "Start a private chat with a local Ollama model"),
     BotCommand("bye", "End the active Ollama chat"),
     BotCommand("memory", "Show persistent Ollama memory"),
+    BotCommand("profile", "Set persistent instructions and preferences for Ollama"),
     BotCommand("remember", "Save a detail for future Ollama chats"),
     BotCommand("forget", "Remove matching saved Ollama facts"),
 ]
@@ -1754,6 +1775,7 @@ def main():
     app.add_handler(CommandHandler("links", links_command))
     app.add_handler(CommandHandler("chat", ollama_chat_start))
     app.add_handler(CommandHandler("memory", ollama_memory_command))
+    app.add_handler(CommandHandler("profile", ollama_profile_command))
     app.add_handler(CommandHandler("remember", ollama_remember_command))
     app.add_handler(CommandHandler("forget", ollama_forget_command))
     app.add_handler(CallbackQueryHandler(ollama_model_selected, pattern=r"^ollama:model:"))
