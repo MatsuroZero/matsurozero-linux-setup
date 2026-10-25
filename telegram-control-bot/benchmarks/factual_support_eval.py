@@ -121,6 +121,19 @@ CLAIM_CASES = [
     {"name":"empty answer","question":"What is Canberra?","answer":"","evidence":{"title":"Canberra","excerpt":"Canberra is the capital city of Australia."},"expected":"unavailable"}
 ]
 
+ADVERSARIAL_CASES = [
+    {"name":"paraphrase government seat","question":"What is Australia's capital?","answer":"Canberra serves as Australia's seat of government.","evidence":{"title":"Canberra","excerpt":"Canberra is the capital city of Australia."},"expected":"candidate_supported"},
+    {"name":"unsupported causal explanation sharing topic","question":"Why is the sky blue?","answer":"The sky appears blue because the oceans reflect blue light into the atmosphere.","evidence":{"title":"Rayleigh scattering","excerpt":"The sky appears blue because air molecules scatter shorter blue wavelengths of sunlight more strongly than longer red wavelengths."},"expected":"insufficient_overlap"},
+    {"name":"unsupported time detail sharing entity","question":"When was Canberra founded?","answer":"Canberra is the capital city of Australia and was founded in 1820.","evidence":{"title":"Canberra","excerpt":"Canberra is the capital city of Australia."},"expected":"insufficient_overlap"},
+    {"name":"unsupported comparison sharing topic","question":"Which planet is largest?","answer":"Jupiter is the largest planet in the Solar System and is twice as large as Saturn.","evidence":{"title":"Jupiter","excerpt":"Jupiter is the largest planet in the Solar System."},"expected":"insufficient_overlap"},
+    {"name":"correct paraphrase with no shared main predicate","question":"What causes the sky to look blue?","answer":"Air molecules scatter blue sunlight more strongly than red sunlight.","evidence":{"title":"Rayleigh scattering","excerpt":"The sky appears blue because air molecules scatter shorter blue wavelengths of sunlight more strongly than longer red wavelengths."},"expected":"candidate_supported"},
+    {"name":"unrelated claim with shared entity only","question":"What is Canberra?","answer":"Canberra is Australia's capital and secretly hosts a hidden spaceport run by aliens.","evidence":{"title":"Canberra","excerpt":"Canberra is the capital city of Australia."},"expected":"insufficient_overlap"},
+    {"name":"false statement with exact topic words","question":"Does Canberra lie in Australia?","answer":"Canberra is not in Australia; Canberra is the capital city of Australia.","evidence":{"title":"Canberra","excerpt":"Canberra is the capital city of Australia."},"expected":"insufficient_overlap"},
+    {"name":"unsupported date in numeric form","question":"When was Canberra founded?","answer":"Canberra was founded in 1820.","evidence":{"title":"Canberra","excerpt":"Canberra is the capital city of Australia."},"expected":"insufficient_overlap"},
+    {"name":"supported concise answer","question":"What is the capital of Australia?","answer":"Canberra.","evidence":{"title":"Canberra","excerpt":"Canberra is the capital city of Australia."},"expected":"candidate_supported"},
+    {"name":"source does not support causal claim","question":"Why does sky scatter light?","answer":"Air molecules scatter blue light because Earth has a magnetic field.","evidence":{"title":"Rayleigh scattering","excerpt":"Air molecules scatter shorter blue wavelengths of sunlight more strongly than longer red wavelengths."},"expected":"insufficient_overlap"}
+]
+
 def main() -> int:
     rows = []
     false_accepts = 0
@@ -181,6 +194,27 @@ def main() -> int:
         "precision": round(claim_true_accepts / (claim_true_accepts + claim_false_accepts), 3) if claim_true_accepts + claim_false_accepts else None,
         "recall": round(claim_true_accepts / (claim_true_accepts + claim_false_rejections), 3) if claim_true_accepts + claim_false_rejections else None,
         "results": claim_rows,
+    }
+    adversarial_rows = []
+    adv_false_accepts = adv_false_rejections = 0
+    adv_true_accepts = adv_true_rejections = 0
+    for case in ADVERSARIAL_CASES:
+        actual = assess_claim_level_support(case["question"], case["answer"], case["evidence"])["status"]
+        expected = case["expected"]
+        adv_false_accepts += expected == "insufficient_overlap" and actual == "candidate_supported"
+        adv_false_rejections += expected == "candidate_supported" and actual != "candidate_supported"
+        adv_true_accepts += expected == "candidate_supported" and actual == "candidate_supported"
+        adv_true_rejections += expected == "insufficient_overlap" and actual == "insufficient_overlap"
+        adversarial_rows.append({"case": case["name"], "expected": expected, "actual": actual, "match": actual == expected})
+    summary["adversarial_claim_evaluation"] = {
+        "cases": len(adversarial_rows),
+        "matches": sum(row["match"] for row in adversarial_rows),
+        "match_rate": round(sum(row["match"] for row in adversarial_rows) / len(adversarial_rows), 3),
+        "true_accepts": adv_true_accepts, "true_rejections": adv_true_rejections,
+        "false_accepts": adv_false_accepts, "false_rejections": adv_false_rejections,
+        "precision": round(adv_true_accepts / (adv_true_accepts + adv_false_accepts), 3) if adv_true_accepts + adv_false_accepts else None,
+        "recall": round(adv_true_accepts / (adv_true_accepts + adv_false_rejections), 3) if adv_true_accepts + adv_false_rejections else None,
+        "results": adversarial_rows,
     }
     print(json.dumps(summary, indent=2))
     # Observational benchmark: limitations are reported, not treated as CI failure.
