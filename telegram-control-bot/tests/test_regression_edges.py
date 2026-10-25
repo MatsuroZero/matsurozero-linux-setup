@@ -44,6 +44,15 @@ class MemoryEdgeCaseTests(unittest.TestCase):
     def setUp(self):
         self.session = {"temporary_facts": []}
 
+    def test_food_does_not_accidentally_match_style_category(self):
+        categories = bot._text_categories("I love food.")
+        self.assertIn("food", categories)
+        self.assertNotIn("style", categories)
+
+    def test_generic_show_verb_does_not_match_creative_category(self):
+        categories = bot._text_categories("Show me how the project works.")
+        self.assertNotIn("creative", categories)
+
     def test_caps_temporary_facts_at_twenty(self):
         for index in range(25):
             self.assertTrue(
