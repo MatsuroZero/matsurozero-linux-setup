@@ -352,6 +352,43 @@ def assess_answer_support(question, answer, evidence):
     }
 
 
+
+def assess_claim_level_support(question, answer, evidence):
+    """Check each answer sentence separately; any unsupported claim fails closed.
+
+    This remains a lexical warning heuristic, not semantic entailment. Splitting
+    helps prevent a supported sentence from hiding unsupported details elsewhere.
+    """
+    text = str(answer or "").strip()
+    if not text:
+        return {"status": "unavailable", "claims": [], "unsupported_claims": []}
+    claims = []
+    for line in re.split(r"[\\r\\n]+", text):
+        line = re.sub(r"^\\s*(?:[-*•]+|\\d+[.)])\\s*", "", line).strip()
+        if not line:
+            continue
+        claims.extend(
+            part.strip()
+            for part in re.split(r"(?<=[.!?])\\s+", line)
+            if part.strip()
+        )
+    if not claims:
+        return {"status": "unavailable", "claims": [], "unsupported_claims": []}
+
+    results = [
+        {"claim": claim, **assess_answer_support(question, claim, evidence)}
+        for claim in claims
+    ]
+    unsupported = [
+        item["claim"] for item in results
+        if item["status"] != "candidate_supported"
+    ]
+    return {
+        "status": "candidate_supported" if not unsupported else "insufficient_overlap",
+        "claims": results[:20],
+        "unsupported_claims": unsupported[:10],
+    }
+
 def format_support_warning():
     """Tell the user the source did not visibly support the generated answer."""
     return (
