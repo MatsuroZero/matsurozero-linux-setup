@@ -25,6 +25,20 @@ class ArithmeticEdgeCaseTests(unittest.TestCase):
     def test_rejects_empty_input(self):
         self.assertIsNone(bot._answer_arithmetic_question("   "))
 
+    def test_standalone_math_is_eligible_for_fast_path(self):
+        self.assertTrue(bot._is_standalone_arithmetic_question("What's (2 + 3) * 4?"))
+
+    def test_mixed_message_is_not_short_circuited(self):
+        self.assertFalse(
+            bot._is_standalone_arithmetic_question(
+                "I love Terraria, what's 1 + 1?"
+            )
+        )
+
+    def test_rejects_expressions_with_too_many_ast_nodes(self):
+        expression = " + ".join(["1"] * 40)
+        self.assertIsNone(bot._answer_arithmetic_question(expression))
+
 
 class MemoryEdgeCaseTests(unittest.TestCase):
     def setUp(self):
