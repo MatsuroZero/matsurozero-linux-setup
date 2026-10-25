@@ -1399,7 +1399,7 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         evidence = await retrieve_wikipedia_evidence(user_text)
         evidence_prompt = format_evidence_for_prompt(evidence)
         if evidence_prompt:
-            system_prompt += "\\n\\n" + evidence_prompt
+            system_prompt += "\n\n" + evidence_prompt
         if arithmetic_result is not None:
             system_prompt += (
                 "\n\nVERIFIED CALCULATION: A deterministic arithmetic evaluator calculated "
