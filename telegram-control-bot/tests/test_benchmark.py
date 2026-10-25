@@ -32,6 +32,31 @@ class BenchmarkGraderRegressionTests(unittest.TestCase):
         )
         self.assertTrue(passed)
 
+    def test_evidence_abstention_accepts_plain_language_paraphrase(self):
+        passed, _ = ollama_smoke.grade(
+            "evidence-missing-population",
+            "None of the provided evidence states the exact population of Canberra. Therefore, it is not possible to determine it.",
+        )
+        self.assertTrue(passed)
+
+    def test_missing_detail_accepts_does_not_specify(self):
+        passed, _ = ollama_smoke.grade(
+            "missing-detail-abstention",
+            "The context does not specify the exact time Nora bought her phone.",
+        )
+        self.assertTrue(passed)
+
+    def test_api_definition_accepts_valid_alternative_wording(self):
+        passed, _ = ollama_smoke.grade(
+            "concise-definition",
+            "An API is a set of standardized ways to access and interact with a system or service.",
+        )
+        self.assertTrue(passed)
+
+    def test_wrong_capital_answer_still_fails(self):
+        passed, _ = ollama_smoke.grade("basic-fact-capital", "Sydney")
+        self.assertFalse(passed)
+
 
 if __name__ == "__main__":
     unittest.main()
