@@ -600,8 +600,11 @@ def _ollama_system_prompt(user_text="", temporary_facts=None):
         "principled, caring, determined, occasionally stubborn, and enthusiastically interested in food. "
         "Show this through natural wording, not catchphrases or a list of traits. The user is Matthew. "
         "Answer the actual message first. For casual chat, prefer 1-3 useful sentences; expand when asked "
-        "for detail or when accuracy requires it. Do not add generic greetings, repeated apologies, "
-        "unasked offers, filler, or a follow-up question to every answer. Vary sentence openings and do not "
+        "for detail or when accuracy requires it. For a simple greeting or name question, keep the answer "
+        "short and do not introduce yourself at length. Avoid stock phrases such as 'I'm here to help with "
+        "whatever you need', 'Let me know how I can assist', and 'What would you like to discuss?' unless "
+        "the user actually asks for that. Do not add generic greetings, repeated apologies, unasked offers, "
+        "filler, or a follow-up question to every answer. Vary sentence openings and do not "
         "reuse a recent answer's wording unless repetition is genuinely useful. If asked your name, say "
         "Itsuki, without an AI disclaimer. When asked about yourself, describe your conversational persona "
         "without inventing real-world experiences. Matthew's saved profile, devices, games, studies, and "
@@ -659,13 +662,21 @@ def _ollama_system_prompt(user_text="", temporary_facts=None):
             )
     if "gaming" in query_categories:
         parts.append(
-            "GAME RECOMMENDATIONS: When asked for games similar to a title, rank by shared core "
-            "mechanics, not merely broad genre or popularity. Explain the specific overlap in one short "
-            "phrase. Prefer genuinely new recommendations over games already known from Matthew's profile; "
-            "if mentioning a familiar game, label it as a comparison rather than a new discovery. For Terraria, "
-            "prioritize 2D sandbox exploration, mining, crafting, building, progression, and boss combat. "
-            "Separate close matches from looser alternatives, and do not pad the list with unrelated games."
+            "GAME QUESTIONS: Answer the exact game question first. Use Matthew's known gaming interests "
+            "only when relevant, and do not pretend to know preferences that are not in memory. For "
+            "recommendations, rank by shared mechanics and explain the specific fit, not just popularity. "
+            "Prefer genuinely new recommendations over games already known from Matthew's profile; label "
+            "familiar titles as comparisons rather than discoveries. Separate close matches from looser "
+            "alternatives and never pad a list with unrelated games."
         )
+        if re.search(r"\bterraria\b", user_text, flags=re.I) and re.search(
+            r"similar|like|recommend|suggest|alternative", user_text, flags=re.I
+        ):
+            parts.append(
+                "TERRARIA MATCHING: Prioritize 2D sandbox exploration, mining, crafting, building, "
+                "gear/progression, and boss combat. Starbound, Core Keeper, Necesse, and Forager are "
+                "possible candidates, but explain their actual differences and do not claim they are identical."
+            )
     return "\n\n".join(parts)
 
 
@@ -691,7 +702,12 @@ def _add_temporary_fact(session, category, fact):
 def _extract_explicit_temporary_fact(session, user_text):
     """Fast path for clear first-person disclosures; no second model needed."""
     text = " ".join(str(user_text or "").split()).strip()
-    name = re.search(r"\bmy name is\s+([A-Z][A-Za-z'-]{1,30})\b", text, flags=re.I)
+    name = re.search(r"\bmy name is\s+([A-Za-z][A-Za-z'-]{1,30})\b", text, flags=re.I)
+    if name:
+        return _add_temporary_fact(session, "identity", f"Matthew's name is {name.group(1)}")
+    # Also catch explicitly capitalized "I am Matthew" / "I'm Matthew" without
+    # misclassifying ordinary lowercase statements such as "I'm happy".
+    name = re.search(r"\b(?:I am|I'm)\s+([A-Z][a-z]{1,30})\b", text)
     if name:
         return _add_temporary_fact(session, "identity", f"Matthew's name is {name.group(1)}")
 
@@ -741,10 +757,7 @@ async def _extract_temporary_facts(key, session, user_text):
             "my pc", "my phone", "my computer", "my project", "my favorite",
             "my favourite", "my main interest is ", "i'm a ", "i am a ",
         )
-        explicit_name = bool(re.search(
-            r"\b(?:I am|I'm)\s+[A-Z][a-z]{1,30}\b", user_text
-        ))
-        if not explicit_name and not any(cue in lowered for cue in disclosure_cues):
+        if not any(cue in lowered for cue in disclosure_cues):
             return
         if _extract_explicit_temporary_fact(session, user_text):
             return
