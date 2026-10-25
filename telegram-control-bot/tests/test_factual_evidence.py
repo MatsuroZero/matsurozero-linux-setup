@@ -181,6 +181,20 @@ class EvidenceFormattingTests(unittest.TestCase):
         self.assertEqual(result["status"], "insufficient_overlap")
         self.assertEqual(result["reason"], "polarity_mismatch")
 
+    def test_unsupported_named_entity_is_flagged(self):
+        evidence = {
+            "title": "General relativity",
+            "excerpt": "Albert Einstein developed the theory of general relativity.",
+        }
+        result = factual_evidence.assess_answer_support(
+            "Who developed the theory of general relativity?",
+            "Albert Einstein and Isaac Newton jointly developed general relativity.",
+            evidence,
+        )
+        self.assertEqual(result["status"], "insufficient_overlap")
+        self.assertIn("Isaac", result["unsupported_named_entities"])
+        self.assertIn("Newton", result["unsupported_named_entities"])
+
     def test_unsupported_numeric_detail_is_flagged_even_when_topic_words_match(self):
         evidence = {
             "title": "Canberra",
