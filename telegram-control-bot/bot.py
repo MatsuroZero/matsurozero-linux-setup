@@ -637,7 +637,7 @@ def _ollama_system_prompt(user_text="", temporary_facts=None):
     selected = [
         item for item in session_facts
         if isinstance(item, dict)
-        and (item.get("category") in query_categories or not query_categories)
+        and (item.get("category") in {"identity", "style"} or item.get("category") in query_categories or not query_categories)
     ]
     if selected:
         lines = [
