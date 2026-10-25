@@ -68,7 +68,7 @@ def is_time_sensitive_question(question):
         return False
     lowered = text.casefold()
     if re.search(
-        r"\b(?:what did i tell you|what do you know about me|what do you remember about me|"
+        r"\b(?:what did i tell you|what do you know about me|what do you (?:currently )?remember about me|"
         r"my\s+(?:phone|computer|pc|device|address|name|age|account|password|favorite|"
         r"favourite|family|location|siblings|profile|history))\b",
         lowered,
