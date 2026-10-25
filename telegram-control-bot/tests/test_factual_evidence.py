@@ -344,7 +344,7 @@ class MultiSourceEvidenceTests(unittest.IsolatedAsyncioTestCase):
         }]
         with patch.object(factual_evidence, "retrieve_wikipedia_evidence", return_value=wikipedia), \
              patch.object(factual_evidence, "retrieve_stackexchange_evidence", return_value=stackoverflow):
-            result = await factual_evidence.retrieve_multi_source_evidence("How do I use Python?")
+            result = await factual_evidence.retrieve_multi_source_evidence("What is Python programming?")
         self.assertEqual(result["title"], wikipedia["title"])
         self.assertEqual(len(result["additional_sources"]), 1)
         prompt = factual_evidence.format_multi_source_evidence_for_prompt(result)
