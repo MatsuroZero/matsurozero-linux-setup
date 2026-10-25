@@ -131,7 +131,9 @@ ADVERSARIAL_CASES = [
     {"name":"false statement with exact topic words","question":"Does Canberra lie in Australia?","answer":"Canberra is not in Australia; Canberra is the capital city of Australia.","evidence":{"title":"Canberra","excerpt":"Canberra is the capital city of Australia."},"expected":"insufficient_overlap"},
     {"name":"unsupported date in numeric form","question":"When was Canberra founded?","answer":"Canberra was founded in 1820.","evidence":{"title":"Canberra","excerpt":"Canberra is the capital city of Australia."},"expected":"insufficient_overlap"},
     {"name":"supported concise answer","question":"What is the capital of Australia?","answer":"Canberra.","evidence":{"title":"Canberra","excerpt":"Canberra is the capital city of Australia."},"expected":"candidate_supported"},
-    {"name":"source does not support causal claim","question":"Why does sky scatter light?","answer":"Air molecules scatter blue light because Earth has a magnetic field.","evidence":{"title":"Rayleigh scattering","excerpt":"Air molecules scatter shorter blue wavelengths of sunlight more strongly than longer red wavelengths."},"expected":"insufficient_overlap"}
+    {"name":"source does not support causal claim","question":"Why does sky scatter light?","answer":"Air molecules scatter blue light because Earth has a magnetic field.","evidence":{"title":"Rayleigh scattering","excerpt":"Air molecules scatter shorter blue wavelengths of sunlight more strongly than longer red wavelengths."},"expected":"insufficient_overlap"},
+    {"name":"reversed subject and object with same vocabulary","question":"What is Australia's capital?","answer":"Australia is the capital city of Canberra.","evidence":{"title":"Canberra","excerpt":"Canberra is the capital city of Australia."},"expected":"insufficient_overlap"},
+    {"name":"unsupported alternate capital sharing every key term","question":"What is Australia's capital?","answer":"Canberra is the capital city of New Zealand.","evidence":{"title":"Canberra","excerpt":"Canberra is the capital city of Australia."},"expected":"insufficient_overlap"}
 ]
 
 def main() -> int:
