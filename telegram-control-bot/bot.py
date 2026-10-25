@@ -923,7 +923,7 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         else:
             lines = ["🧠 Temporary facts for this chat only:", ""]
             lines.extend(f"- [{item.get('category', 'identity')}] {item.get('fact', '')}" for item in facts)
-            await message.reply_text("\\n".join(lines))
+            await message.reply_text("\n".join(lines))
         return
 
     if command_word == "/bye":
