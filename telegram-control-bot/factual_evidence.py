@@ -367,9 +367,17 @@ def assess_answer_support(question, answer, evidence):
             "matched_terms": [],
             "reason": "reversed_capital_relation",
         }
-    answer_terms = _content_tokens(answer_text)
-    evidence_terms = _content_tokens(evidence_text)
-    question_terms = _content_tokens(question)
+    # Numeric support is checked separately above. Exclude digit tokens from
+    # lexical overlap so formatting variants like 12 and 12.0 do not distort it.
+    def non_numeric_terms(value):
+        return {
+            term for term in _content_tokens(value)
+            if not term.replace(",", "").replace(".", "").isdigit()
+        }
+
+    answer_terms = non_numeric_terms(answer_text)
+    evidence_terms = non_numeric_terms(evidence_text)
+    question_terms = non_numeric_terms(question)
 
     # Basic polarity check: shared words alone cannot support a negated claim.
     negation_pattern = re.compile(r"\b(?:not|never|without|neither|cannot)\b", re.IGNORECASE)
