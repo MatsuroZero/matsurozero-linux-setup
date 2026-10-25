@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Thread
@@ -11,8 +12,9 @@ from pathlib import Path
 
 import psutil
 from dotenv import load_dotenv
-from telegram import Update
+from telegram import BotCommand, Update
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.error import BadRequest
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
@@ -55,23 +57,20 @@ async def guard(update: Update) -> bool:
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Give a brief welcome and direct the user to the interactive menu."""
     if not await guard(update):
         return
     await update.effective_message.reply_text(
-        "🖥️ CACHYOS CONTROL CENTER\n"
-        "━━━━━━━━━━━━━━━━━━\n"
-        "Your PC, at your fingertips. 🤖\n\n"
-        "📊 System      /status\n"
-        "🌡️ Temps       /temps\n"
-        "📈 Processes   /top\n"
-        "🌐 Network     /network\n"
-        "⚙️ Services    /services\n"
-        "🐳 Docker      /docker\n"
-        "🔗 Dashboards  /links\n"
-        "📖 Commands    /help\n\n"
-        "🔐 Private access enabled"
+        "🖥️ CACHYOS CONTROL CENTER\\n"
+        "━━━━━━━━━━━━━━━━━━\\n"
+        "Welcome back! Your CachyOS control room is ready.\\n\\n"
+        "Use /menu to open the interactive dashboard for system health, "
+        "services, Docker, network, and local dashboards.\\n\\n"
+        "Need the full command guide? Use /help.",
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("🧭 Open control menu", callback_data="menu:home")
+        ]]),
     )
-
 
 
 def menu_keyboard(section=None):
@@ -98,7 +97,7 @@ def menu_keyboard(section=None):
 
     if section:
         buttons.append([
-            InlineKeyboardButton("🔄 Refresh", callback_data=f"menu:{section}"),
+            InlineKeyboardButton("🔄 Refresh", callback_data=f"menu:refresh:{section}"),
             InlineKeyboardButton("⬅️ Back to menu", callback_data="menu:home"),
         ])
 
@@ -106,10 +105,15 @@ def menu_keyboard(section=None):
 
 
 MENU_HOME_TEXT = (
-    "🖥️ CACHYOS CONTROL CENTER\n"
-    "━━━━━━━━━━━━━━━━━━\n"
-    "Your PC, at your fingertips. 🤖\n\n"
-    "Choose a section below.\n\n"
+    "🍱 IT'S ITSUKI! WELCOME BACK!\\n"
+    "━━━━━━━━━━━━━━━━━━\\n"
+    "I've got your CachyOS control room ready. Your system health, "
+    "Serpantinum desktop, services, Docker projects, network, and local "
+    "dashboards are gathered here.\\n\\n"
+    "I know you like understanding how the pieces of your setup fit together, "
+    "so I've kept the controls clearly grouped. Choose a panel below!\\n\\n"
+    "And please check which project you're touching before stopping a container, okay? "
+    "I made the buttons clear for a reason. 🍙\\n\\n"
     "🔐 Private access enabled"
 )
 
@@ -259,25 +263,47 @@ async def menu_page_text(action):
 
     if action == "help":
         return (
-            "📖 CONTROL CENTER | COMMAND GUIDE\n\n"
-            "📊 SYSTEM\n"
-            "/status  Overall system status\n"
-            "/cpu     CPU usage and load\n"
-            "/ram     RAM and swap usage\n"
-            "/disk    Root disk space\n"
-            "/temps   Temperatures\n"
-            "/top     Top processes\n"
-            "/uptime  Uptime and boot time\n"
-            "/network Network counters and interfaces\n\n"
-            "⚙️ SERVICES\n"
-            "/services  Show approved service states\n"
-            "/service <name> <status|start|stop|restart>\n"
-            "Names: jellyfin, ollama, sunshine\n\n"
-            "🐳 DOCKER\n"
-            "/docker  List containers\n"
-            "/docker <name> <status|start|stop|restart>\n"
-            "Use only approved container names.\n"
-            "Stop/restart require confirmation."
+            "📖 CACHYOS CONTROL BOT | COMMAND GUIDE\\n"
+            "━━━━━━━━━━━━━━━━━━\\n\\n"
+            "🧭 START HERE\\n"
+            "/start  Welcome and a shortcut to the menu\\n"
+            "/menu   Open the interactive control dashboard\\n"
+            "/help   Show this complete command guide\\n\\n"
+            "📊 SYSTEM\\n"
+            "/status  CPU, load, memory, storage, and uptime\\n"
+            "/cpu     CPU utilization and 1/5/15-minute load\\n"
+            "/ram     RAM availability and swap usage\\n"
+            "/disk    Root plus sda1/sda2 partition storage\\n"
+            "/temps   Read available hardware temperature sensors\\n"
+            "/top     Show the busiest processes by CPU and memory\\n"
+            "/uptime  Show uptime and the last boot time\\n"
+            "/network Network counters and interface states\\n\\n"
+            "⚙️ SYSTEMD SERVICES\\n"
+            "/services  List supported services and current state\\n"
+            "/service NAME status  Check one service\\n"
+            "/service NAME start   Start a service\\n"
+            "/service NAME stop    Stop a service (confirmation required)\\n"
+            "/service NAME restart Restart a service (confirmation required)\\n"
+            "Run /services for the exact supported service names.\\n\\n"
+            "🐳 DOCKER\\n"
+            "/docker  List containers, readable aliases, and states\\n"
+            "/docker ALIAS status   Inspect one approved container\\n"
+            "/docker ALIAS start    Start one approved container\\n"
+            "/docker ALIAS stop     Stop one approved container (confirm first)\\n"
+            "/docker ALIAS restart  Restart one approved container (confirm first)\\n"
+            "/docker project NAME status   Show a Compose project's containers\\n"
+            "/docker project NAME start    Start a configured Compose project\\n"
+            "/docker project NAME stop     Stop a project (confirmation required)\\n"
+            "/docker project NAME restart  Restart a project (confirmation required)\\n"
+            "Project names: odysseus, uptime-kuma, localnexus.\\n"
+            "Use /docker to see aliases and exact Docker container names.\\n\\n"
+            "🔗 DASHBOARDS & POWER\\n"
+            "/links  Show local dashboard URLs without credentials\\n"
+            "/power  Open lock, suspend, reboot, and shutdown controls\\n"
+            "Power actions require confirmation and expire after 60 seconds.\\n\\n"
+            "🔒 SECURITY\\n"
+            "Only the configured Telegram user ID is authorized. Service and Docker "
+            "actions use fixed allowlists; arbitrary shell commands are not accepted."
         )
 
     return None
@@ -292,6 +318,8 @@ async def menu_callback(update, context):
         return
 
     action = (query.data or "").removeprefix("menu:")
+    if action.startswith("refresh:"):
+        action = action.split(":", 1)[1]
 
     if action == "home":
         await query.edit_message_text(
@@ -310,17 +338,23 @@ async def menu_callback(update, context):
         return
 
     try:
-        text = await menu_page_text(action)
-        await query.edit_message_text(
-            (text or "No information available.")[:4000],
-            reply_markup=menu_keyboard(action),
-        )
+        text = (await menu_page_text(action) or "No information available.")[:4000]
+        try:
+            await query.edit_message_text(text, reply_markup=menu_keyboard(action))
+        except BadRequest as exc:
+            # Identical refresh results are a successful no-op in Telegram.
+            if "Message is not modified" not in str(exc):
+                raise
     except Exception:
         log.exception("Menu section failed: %s", action)
-        await query.edit_message_text(
-            f"Couldn't load {action}. Check the bot logs.",
-            reply_markup=menu_keyboard(action),
-        )
+        try:
+            await query.edit_message_text(
+                f"Couldn't load {action}. Check the bot logs.",
+                reply_markup=menu_keyboard(action),
+            )
+        except BadRequest as exc:
+            if "Message is not modified" not in str(exc):
+                raise
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -351,50 +385,120 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def links_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """List dashboard addresses without exposing credentials in chat."""
     if not await guard(update):
         return
     await update.effective_message.reply_text(
-        "🔗 YOUR LOCAL DASHBOARDS\n"
-        "━━━━━━━━━━━━━━━━━━\n\n"
-        "🖥️ Dashboard\n"
-        "http://marwan-pc.local:7171/login\n"
-        "Username: marwan\n"
-        "Password: 7171\n\n"
-        "🧠 Odysseus\n"
-        "http://marwan-pc.local:7011/\n"
-        "Username: admin\n"
-        "Password: admin7171\n\n"
-        "🎬 Jellyfin\n"
-        "http://marwan-pc.local:8096/\n"
-        "Username: admin\n"
-        "Password: admin\n\n"
-        "📡 Uptime Kuma\n"
-        "http://marwan-pc.local:3001/\n"
-        "Username: admin\n"
-        "Password: admin7171\n\n"
-        "🔒 Keep these credentials private."
+        "🔗 LOCAL DASHBOARDS\\n"
+        "━━━━━━━━━━━━━━━━━━\\n\\n"
+        "🖥️ System dashboard\\nhttp://marwan-pc.local:7171/login\\n\\n"
+        "🧠 Odysseus\\nhttp://marwan-pc.local:7011/\\n\\n"
+        "🎬 Jellyfin\\nhttp://marwan-pc.local:8096/\\n\\n"
+        "📡 Uptime Kuma\\nhttp://marwan-pc.local:3001/\\n\\n"
+        "🔐 For security, this command never displays usernames or passwords."
     )
 
+
+def disk_usage_report() -> str:
+    """Report root plus sda1/sda2 storage, including unmounted partition sizes."""
+    selected = {}
+    try:
+        result = subprocess.run(
+            ["lsblk", "--json", "--bytes", "--output",
+             "NAME,SIZE,TYPE,FSTYPE,MOUNTPOINTS"],
+            capture_output=True, text=True, timeout=5, check=False,
+        )
+        if result.returncode == 0:
+            data = json.loads(result.stdout or "{}")
+
+            def walk(nodes):
+                for node in nodes:
+                    name = str(node.get("name") or "")
+                    mounts = node.get("mountpoints") or []
+                    if isinstance(mounts, str):
+                        mounts = [mounts]
+                    mounts = [mount for mount in mounts if mount]
+                    if node.get("type") == "part" and (
+                        name in {"sda1", "sda2"} or "/" in mounts
+                    ):
+                        selected[name] = {
+                            "size": int(node.get("size") or 0),
+                            "fstype": node.get("fstype") or "unknown",
+                            "mounts": mounts,
+                        }
+                    walk(node.get("children") or [])
+
+            walk(data.get("blockdevices") or [])
+    except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError, TypeError, ValueError):
+        log.warning("Could not read partition layout with lsblk", exc_info=True)
+
+    try:
+        root = shutil.disk_usage("/")
+        root_partition = next(
+            (p.device for p in psutil.disk_partitions(all=False) if p.mountpoint == "/"),
+            "root filesystem",
+        )
+        root_name = Path(root_partition).name
+        selected[root_name] = {
+            "size": root.total,
+            "fstype": "mounted root",
+            "mounts": ["/"],
+            "usage": root,
+        }
+    except OSError:
+        pass
+
+    if not selected:
+        return "💾 Storage\\nRoot filesystem: unavailable"
+
+    lines = ["💾 STORAGE & PARTITIONS", ""]
+    for name, item in sorted(
+        selected.items(),
+        key=lambda pair: (pair[0] not in {"sda1", "sda2"}, pair[0]),
+    ):
+        mounts = item["mounts"]
+        mount_text = ", ".join(mounts) if mounts else "not mounted"
+        usage = item.get("usage")
+        if usage is None and mounts:
+            try:
+                usage = shutil.disk_usage(mounts[0])
+            except OSError:
+                usage = None
+
+        if usage is not None:
+            used_gib = usage.used / 1024**3
+            total_gib = usage.total / 1024**3
+            free_gib = usage.free / 1024**3
+            percent = usage.used / usage.total * 100 if usage.total else 0
+            lines.append(
+                f"📀 {name} [{item['fstype']}]\\n"
+                f"   Mount: {mount_text}\\n"
+                f"   Used: {used_gib:.1f} / {total_gib:.1f} GiB ({percent:.1f}%)\\n"
+                f"   Free: {free_gib:.1f} GiB"
+            )
+        else:
+            lines.append(
+                f"📀 {name} [{item['fstype']}]\\n"
+                f"   Mount: {mount_text}\\n"
+                f"   Capacity: {item['size'] / 1024**3:.1f} GiB"
+            )
+    return "\\n\\n".join(lines)
 
 
 def system_status() -> str:
     memory = psutil.virtual_memory()
-    disk = shutil.disk_usage("/")
     uptime = timedelta(seconds=int(time.time() - psutil.boot_time()))
     load = os.getloadavg()
 
     return (
-        "🖥️ CachyOS PC Status\n\n"
-        f"CPU usage: {psutil.cpu_percent(interval=0.5):.1f}%\n"
+        "🖥️ CachyOS PC Status\\n\\n"
+        f"CPU usage: {psutil.cpu_percent(interval=0.5):.1f}%\\n"
         f"CPU load (1/5/15 min): "
-        f"{load[0]:.2f} / {load[1]:.2f} / {load[2]:.2f}\n\n"
+        f"{load[0]:.2f} / {load[1]:.2f} / {load[2]:.2f}\\n\\n"
         f"RAM: {memory.used / 1024**3:.2f} / "
-        f"{memory.total / 1024**3:.2f} GiB ({memory.percent:.1f}%)\n"
-        f"RAM available: {memory.available / 1024**3:.2f} GiB\n\n"
-        f"Root disk: {disk.used / 1024**3:.1f} / "
-        f"{disk.total / 1024**3:.1f} GiB "
-        f"({disk.used / disk.total * 100:.1f}%)\n"
-        f"Disk free: {disk.free / 1024**3:.1f} GiB\n\n"
+        f"{memory.total / 1024**3:.2f} GiB ({memory.percent:.1f}%)\\n"
+        f"RAM available: {memory.available / 1024**3:.2f} GiB\\n\\n"
+        f"{disk_usage_report()}\\n\\n"
         f"Uptime: {uptime}"
     )
 
@@ -438,22 +542,25 @@ async def ram(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def disk(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await guard(update):
         return
-    d = shutil.disk_usage("/")
-    await update.effective_message.reply_text(
-        f"💾 Root disk usage: {d.used / 1024**3:.1f} / "
-        f"{d.total / 1024**3:.1f} GiB "
-        f"({d.used / d.total * 100:.1f}%)\n"
-        f"Free: {d.free / 1024**3:.1f} GiB"
-    )
-
+    try:
+        message = disk_usage_report()
+    except Exception:
+        log.exception("Failed to collect partition storage")
+        message = "Couldn't collect disk information. Check the bot logs."
+    await update.effective_message.reply_text(message[:4000])
 
 
 # Fixed allowlist. Sunshine is a per-user systemd service.
 SERVICE_ALLOWLIST = {
+    # Keep aligned with the Nexus Control Center service registry.
     "jellyfin": ("system", "jellyfin.service"),
+    "docker": ("system", "docker.service"),
     "ollama": ("system", "ollama.service"),
-    "sunshine": ("user", "app-dev.lizardbyte.app.Sunshine.service"),
+    "localnexus": ("user", "localnexus.service"),
+    "telegram-bot": ("user", "telegram-control-bot.service"),
     "dashboard": ("system", "system-dashboard.service"),
+    "dashboard-ydotool": ("system", "system-dashboard-ydotool.service"),
+    "sunshine": ("user", "app-dev.lizardbyte.app.Sunshine.service"),
 }
 
 
@@ -461,7 +568,7 @@ async def services(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await guard(update):
         return
 
-    lines = ["🔧 Approved service status", ""]
+    lines = ["⚙️ NEXUS + SYSTEM SERVICES", "Use /service NAME status|start|stop|restart to control one.", ""]
     for name, (scope, unit) in SERVICE_ALLOWLIST.items():
         command = ["systemctl"]
         if scope == "user":
@@ -486,9 +593,8 @@ async def service_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if len(context.args) != 2:
         await update.effective_message.reply_text(
-            "Usage: /service <jellyfin|ollama|sunshine> "
-            "<status|start|stop|restart>"
-        )
+            "Usage: /service <name> <status|start|stop|restart>\\n"
+            "Run /services to see supported service names."\n        )
         return
 
     name, action = (arg.lower() for arg in context.args)
@@ -525,7 +631,7 @@ async def perform_service_action(update, name: str, action: str):
 
     if scope == "user":
         command = ["systemctl", "--user"]
-    elif name == "ollama" and action in {"start", "stop", "restart"}:
+    elif action in {"start", "stop", "restart"}:
         command = ["sudo", "-n", "/usr/bin/systemctl"]
     else:
         command = ["systemctl"]
@@ -586,10 +692,16 @@ async def service_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await perform_service_action(update, name, action)
 
 
-# Explicit container allowlist. Compose projects are handled separately later.
+# Fixed aliases for individual containers and configured Nexus Compose projects.
+# Compose paths are local to the PC; chat input cannot supply arbitrary paths.
+DOCKER_PROJECTS = {
+    "odysseus": Path.home() / "Projects" / "odysseus" / "docker-compose.yml",
+    "uptime-kuma": Path.home() / "Projects" / "uptime-kuma" / "compose.yaml",
+    "localnexus": Path.home() / "Projects" / "ReverseEngineering" / "LocalNexus" / "compose.yaml",
+}
 DOCKER_ALLOWLIST = {
     "uptime-kuma": "uptime-kuma",
-    "odysseus": "odysseus-odysseus-1",
+    "odysseus-app": "odysseus-odysseus-1",
     "searxng": "odysseus-searxng-1",
     "ntfy": "odysseus-ntfy-1",
     "chromadb": "odysseus-chromadb-1",
@@ -597,70 +709,174 @@ DOCKER_ALLOWLIST = {
 }
 
 
+def docker_list_text() -> str:
+    lines = [
+        "🐳 DOCKER CONTROL CENTER",
+        "",
+        "PROJECTS (Compose)",
+        *[
+            f"  • {name} → /docker project {name} <status|start|stop|restart>"
+            for name in DOCKER_PROJECTS
+        ],
+        "",
+        "CONTAINERS (alias → actual Docker name)",
+    ]
+    try:
+        result = subprocess.run(
+            ["docker", "ps", "-a", "--format", "{{.Names}}\\t{{.Status}}\\t{{.Image}}"],
+            capture_output=True, text=True, timeout=10, check=False,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr.strip() or "Docker command failed")
+        rows = {}
+        for line in result.stdout.splitlines():
+            parts = line.split("\\t", 2)
+            if len(parts) == 3:
+                rows[parts[0].lstrip("/")] = (parts[1], parts[2])
+        if not rows:
+            lines.append("  No containers found.")
+        else:
+            reverse_aliases = {actual: alias for alias, actual in DOCKER_ALLOWLIST.items()}
+            for actual, (state, image) in sorted(rows.items()):
+                alias = reverse_aliases.get(actual, "not allowlisted")
+                marker = "✅" if state.lower().startswith("up") else "⏹️"
+                lines.append(f"{marker} Alias: {alias}")
+                lines.append(f"   Docker name: {actual}")
+                lines.append(f"   State: {state}")
+                lines.append(f"   Image: {image}")
+                if alias != "not allowlisted":
+                    lines.append(f"   Control: /docker container {alias} <status|start|stop|restart>")
+                lines.append("")
+    except (OSError, subprocess.TimeoutExpired, RuntimeError) as exc:
+        lines.append(f"Could not list containers: {str(exc)[:300]}")
+    lines.extend([
+        "Use the Alias value, not the long Docker-generated name.",
+        "Stop/restart actions ask for confirmation.",
+    ])
+    return "\\n".join(lines)
+
+
 async def docker_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await guard(update):
         return
-
-    if not context.args:
-        try:
-            result = subprocess.run(
-                ["docker", "ps", "-a", "--format",
-                 "{{.Names}} | {{.Status}}"],
-                capture_output=True, text=True, timeout=10, check=False
-            )
-            if result.returncode != 0:
-                raise RuntimeError(result.stderr.strip() or "Docker command failed")
-            lines = result.stdout.strip().splitlines()
-            message = "🐳 Containers\n\n" + ("\n".join(lines) if lines else "No containers found.")
-        except (OSError, subprocess.TimeoutExpired, RuntimeError) as exc:
-            message = f"Couldn't list containers: {str(exc)[:500]}"
-        await update.effective_message.reply_text(message[:4000])
+    args = [arg.lower() for arg in context.args]
+    if not args:
+        await update.effective_message.reply_text(docker_list_text()[:4000])
         return
 
-    if len(context.args) != 2:
+    if args[0] == "project":
+        if len(args) != 3:
+            await update.effective_message.reply_text(
+                "Usage: /docker project <odysseus|uptime-kuma|localnexus> "
+                "<status|start|stop|restart>\\nRun /docker to see project aliases."
+            )
+            return
+        _, name, action = args
+        if name not in DOCKER_PROJECTS:
+            await update.effective_message.reply_text(
+                "Unknown Compose project. Run /docker to see supported names."
+            )
+            return
+        if action not in {"status", "start", "stop", "restart"}:
+            await update.effective_message.reply_text("Choose status, start, stop, or restart.")
+            return
+        if action in {"stop", "restart"}:
+            await update.effective_message.reply_text(
+                f"⚠️ This affects every container in the '{name}' Compose project. Continue?",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton(
+                        f"Confirm {action}", callback_data=f"dockproj:{name}:{action}:{update.effective_user.id}"
+                    ),
+                    InlineKeyboardButton("Cancel", callback_data="dockproj:cancel"),
+                ]]),
+            )
+            return
+        await perform_docker_project_action(update, name, action)
+        return
+
+    if args[0] == "container":
+        args = args[1:]
+    if len(args) != 2:
         await update.effective_message.reply_text(
-            "Usage:\n/docker\n/docker <name> <status|start|stop|restart>\n\n"
-            "Names: " + ", ".join(DOCKER_ALLOWLIST)
+            "Usage:\\n/docker  List projects and container aliases\\n"
+            "/docker <alias> <status|start|stop|restart>\\n"
+            "/docker container <alias> <status|start|stop|restart>\\n"
+            "/docker project <name> <status|start|stop|restart>\\n"
+            "Run /docker for the exact alias names."
         )
         return
 
-    name, action = (arg.lower() for arg in context.args)
+    name, action = args
     if name not in DOCKER_ALLOWLIST:
-        await update.effective_message.reply_text("Container not allowlisted.")
+        await update.effective_message.reply_text(
+            "Unknown container alias. Run /docker and copy the Alias value, not the Docker-generated name."
+        )
         return
     if action not in {"status", "start", "stop", "restart"}:
-        await update.effective_message.reply_text("Action not allowed.")
+        await update.effective_message.reply_text("Choose status, start, stop, or restart.")
         return
 
     if action in {"stop", "restart"}:
-        keyboard = InlineKeyboardMarkup([[
-            InlineKeyboardButton(
-                "Confirm " + action,
-                callback_data=f"dock:{name}:{action}:{update.effective_user.id}"
-            ),
-            InlineKeyboardButton("Cancel", callback_data="dock:cancel"),
-        ]])
         await update.effective_message.reply_text(
-            f"Confirm {action} for container {name}?",
-            reply_markup=keyboard,
+            f"⚠️ Confirm {action} for container '{name}' ({DOCKER_ALLOWLIST[name]})?",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton(
+                    "Confirm " + action,
+                    callback_data=f"dock:{name}:{action}:{update.effective_user.id}"
+                ),
+                InlineKeyboardButton("Cancel", callback_data="dock:cancel"),
+            ]]),
         )
         return
-
     await perform_docker_action(update, name, action)
+
+
+async def perform_docker_project_action(update, name: str, action: str):
+    compose_file = DOCKER_PROJECTS[name]
+    if not compose_file.is_file():
+        message = (
+            f"Compose file for '{name}' was not found at {compose_file}. "
+            "Check that the project is installed at its configured path."
+        )
+    else:
+        if action == "status":
+            command = ["docker", "compose", "-f", str(compose_file), "ps", "--all"]
+        elif action == "start":
+            command = ["docker", "compose", "-f", str(compose_file), "up", "-d"]
+        elif action == "stop":
+            command = ["docker", "compose", "-f", str(compose_file), "stop"]
+        else:
+            command = ["docker", "compose", "-f", str(compose_file), "restart"]
+        try:
+            result = subprocess.run(
+                command, capture_output=True, text=True, timeout=60, check=False,
+                cwd=str(compose_file.parent),
+            )
+            if result.returncode == 0:
+                detail = result.stdout.strip()
+                message = f"🐳 Compose project: {name}\\nAction: {action}\\n\\n{detail or 'Command completed successfully.'}"
+            else:
+                detail = result.stderr.strip() or result.stdout.strip() or f"exit code {result.returncode}"
+                message = f"Could not {action} Compose project '{name}':\\n{detail[:900]}"
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            message = f"Compose project action failed: {str(exc)[:500]}"
+    if update.callback_query:
+        await update.callback_query.edit_message_text(message[:4000])
+    else:
+        await update.effective_message.reply_text(message[:4000])
 
 
 async def perform_docker_action(update, name: str, action: str):
     container = DOCKER_ALLOWLIST[name]
-
     if action == "status":
         command = [
             "docker", "inspect", "--format",
-            "{{.State.Status}} | {{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}",
+            "{{.Name}} | {{.Config.Image}} | {{.State.Status}} | "
+            "{{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}",
             container,
         ]
     else:
         command = ["docker", action, container]
-
     try:
         result = subprocess.run(
             command, capture_output=True, text=True, timeout=20, check=False
@@ -668,38 +884,33 @@ async def perform_docker_action(update, name: str, action: str):
         if result.returncode == 0:
             detail = result.stdout.strip()
             if action == "status":
-                message = f"🐳 {name}: {detail or 'unknown status'}"
+                message = f"🐳 CONTAINER STATUS\\nAlias: {name}\\nDocker name: {container}\\n{detail or 'unknown status'}"
             else:
-                message = f"Requested {action} for {name} successfully."
+                message = f"✅ Requested {action} for '{name}' ({container})."
         else:
             detail = result.stderr.strip() or result.stdout.strip() or f"exit code {result.returncode}"
-            message = f"Could not {action} {name}: {detail[:700]}"
+            message = f"Could not {action} '{name}' ({container}): {detail[:700]}"
     except (OSError, subprocess.TimeoutExpired) as exc:
         message = f"Docker action failed: {str(exc)[:500]}"
-
     if update.callback_query:
-        await update.callback_query.edit_message_text(message)
+        await update.callback_query.edit_message_text(message[:4000])
     else:
-        await update.effective_message.reply_text(message)
+        await update.effective_message.reply_text(message[:4000])
 
 
 async def docker_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-
     if not authorized(update):
         await query.edit_message_text("Not authorized.")
         return
-
     parts = (query.data or "").split(":")
     if parts == ["dock", "cancel"]:
         await query.edit_message_text("Cancelled.")
         return
-
     if len(parts) != 4 or parts[0] != "dock":
         await query.edit_message_text("Invalid confirmation.")
         return
-
     _, name, action, requester_id = parts
     if requester_id != str(update.effective_user.id):
         await query.edit_message_text("This confirmation belongs to another user.")
@@ -707,10 +918,30 @@ async def docker_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if name not in DOCKER_ALLOWLIST or action not in {"stop", "restart"}:
         await query.edit_message_text("Action not allowed.")
         return
-
     await perform_docker_action(update, name, action)
 
 
+async def docker_project_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    if not authorized(update):
+        await query.edit_message_text("Not authorized.")
+        return
+    parts = (query.data or "").split(":")
+    if parts == ["dockproj", "cancel"]:
+        await query.edit_message_text("Cancelled.")
+        return
+    if len(parts) != 4 or parts[0] != "dockproj":
+        await query.edit_message_text("Invalid confirmation.")
+        return
+    _, name, action, requester_id = parts
+    if requester_id != str(update.effective_user.id):
+        await query.edit_message_text("This confirmation belongs to another user.")
+        return
+    if name not in DOCKER_PROJECTS or action not in {"stop", "restart"}:
+        await query.edit_message_text("Action not allowed.")
+        return
+    await perform_docker_project_action(update, name, action)
 
 
 
@@ -1033,6 +1264,31 @@ def start_health_server():
     Thread(target=server.serve_forever, daemon=True).start()
     log.info("Health endpoint listening on 172.18.0.1:8765/health")
 
+COMMAND_DESCRIPTIONS = [
+    BotCommand("start", "Welcome and open the control menu"),
+    BotCommand("menu", "Open the interactive control dashboard"),
+    BotCommand("help", "Explain every command and its usage"),
+    BotCommand("status", "Show CPU, memory, storage, and uptime"),
+    BotCommand("cpu", "Show CPU utilization and system load"),
+    BotCommand("ram", "Show RAM and swap usage"),
+    BotCommand("disk", "Show root, sda1, and sda2 storage"),
+    BotCommand("temps", "Read available hardware temperatures"),
+    BotCommand("top", "Show the busiest processes"),
+    BotCommand("uptime", "Show uptime and last boot time"),
+    BotCommand("network", "Show network counters and interfaces"),
+    BotCommand("services", "List Nexus/systemd service states"),
+    BotCommand("service", "Control or check an approved systemd service"),
+    BotCommand("docker", "List and manage approved containers and projects"),
+    BotCommand("links", "List local dashboard URLs without credentials"),
+    BotCommand("power", "Open confirmed lock/suspend/reboot/shutdown controls"),
+]
+
+
+async def register_command_descriptions(application):
+    """Publish helpful labels in Telegram's command picker."""
+    await application.bot.set_my_commands(COMMAND_DESCRIPTIONS)
+
+
 def main():
     if not TOKEN:
         raise SystemExit("TELEGRAM_BOT_TOKEN is missing from .env")
@@ -1041,7 +1297,7 @@ def main():
             "TELEGRAM_ALLOWED_USER_ID must be your numeric Telegram user ID"
         )
 
-    app = Application.builder().token(TOKEN).build()
+    app = Application.builder().token(TOKEN).post_init(register_command_descriptions).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("menu", menu_command))
@@ -1062,6 +1318,7 @@ def main():
     app.add_handler(CallbackQueryHandler(service_callback, pattern=r"^svc:"))
     app.add_handler(CommandHandler("docker", docker_command))
     app.add_handler(CallbackQueryHandler(docker_callback, pattern=r"^dock:"))
+    app.add_handler(CallbackQueryHandler(docker_project_callback, pattern=r"^dockproj:"))
 
     start_health_server()
     log.info("Starting CachyOS Control Bot")
