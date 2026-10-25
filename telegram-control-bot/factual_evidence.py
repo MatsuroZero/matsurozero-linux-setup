@@ -309,6 +309,35 @@ def _has_reversed_capital_relation(answer_text, evidence_text):
     return any((right, left) in evidence_pairs for left, right in answer_pairs)
 
 
+def _normalized_numeric_values(text):
+    """Normalize simple digit and number-word forms for conservative checks."""
+    number_pattern = re.compile(r"(?<![A-Za-z])(?:\d[\d,]*(?:\.\d+)?%?)(?![A-Za-z])")
+    number_words = {
+        "zero": "0", "one": "1", "two": "2", "three": "3", "four": "4",
+        "five": "5", "six": "6", "seven": "7", "eight": "8", "nine": "9",
+        "ten": "10", "eleven": "11", "twelve": "12", "thirteen": "13",
+        "fourteen": "14", "fifteen": "15", "sixteen": "16", "seventeen": "17",
+        "eighteen": "18", "nineteen": "19", "twenty": "20", "thirty": "30",
+        "forty": "40", "fifty": "50", "sixty": "60", "seventy": "70",
+        "eighty": "80", "ninety": "90", "hundred": "100",
+        "thousand": "1000", "million": "1000000", "billion": "1000000000",
+    }
+
+    def canonical(value):
+        percent = value.endswith("%")
+        raw = value[:-1] if percent else value
+        try:
+            normalized = format(Decimal(raw.replace(",", "")).normalize(), "f")
+        except (InvalidOperation, ValueError):
+            normalized = raw.replace(",", "")
+        return normalized + ("%" if percent else "")
+
+    values = {canonical(match.group(0)) for match in number_pattern.finditer(str(text or ""))}
+    words = set(re.findall(r"\b[a-z]+\b", str(text or "").casefold())) & set(number_words)
+    values.update(canonical(number_words[word]) for word in words)
+    return values
+
+
 def assess_answer_support(question, answer, evidence):
     """Estimate lexical support; this is not a truth or contradiction detector.
 
@@ -355,9 +384,8 @@ def assess_answer_support(question, answer, evidence):
     # Numbers are often the most consequential unsupported details. If an answer
     # introduces a numeric value that does not occur in the extract, fail closed
     # for this lightweight check rather than letting topic-word overlap hide it.
-    numeric_pattern = re.compile(r"(?<![A-Za-z])(?:\d[\d,]*(?:\.\d+)?%?)(?![A-Za-z])")
-    answer_numbers = set(numeric_pattern.findall(answer_text))
-    evidence_numbers = set(numeric_pattern.findall(evidence_text))
+    answer_numbers = _normalized_numeric_values(answer_text)
+    evidence_numbers = _normalized_numeric_values(evidence_text)
     unsupported_numbers = sorted(answer_numbers - evidence_numbers)
     if unsupported_numbers:
         return {
