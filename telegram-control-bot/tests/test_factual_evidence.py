@@ -2,7 +2,7 @@
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 BOT_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BOT_DIR))
@@ -590,3 +590,75 @@ class EvidenceConflictDetectionTests(unittest.TestCase):
             }],
         }
         self.assertEqual(factual_evidence.detect_evidence_conflicts(evidence), [])
+
+
+class EvidenceCacheTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        factual_evidence._EVIDENCE_CACHE.clear()
+
+    def tearDown(self):
+        factual_evidence._EVIDENCE_CACHE.clear()
+
+    async def test_repeated_question_reuses_cached_evidence(self):
+        evidence = {
+            "title": "Python",
+            "excerpt": "Python is a programming language.",
+            "url": "https://en.wikipedia.org/?curid=123",
+            "additional_sources": [],
+        }
+        with patch.object(
+            factual_evidence,
+            "_retrieve_multi_source_evidence_uncached",
+            new=AsyncMock(return_value=evidence),
+        ) as retrieve:
+            first = await factual_evidence.retrieve_multi_source_evidence(
+                "What is Python?"
+            )
+            second = await factual_evidence.retrieve_multi_source_evidence(
+                "  WHAT   IS Python? "
+            )
+        self.assertEqual(retrieve.await_count, 1)
+        self.assertEqual(first, evidence)
+        self.assertEqual(second, evidence)
+
+    async def test_cached_evidence_is_copied_to_prevent_mutation_leaks(self):
+        evidence = {
+            "title": "Python",
+            "excerpt": "Python is a programming language.",
+            "url": "https://en.wikipedia.org/?curid=123",
+            "additional_sources": [],
+        }
+        with patch.object(
+            factual_evidence,
+            "_retrieve_multi_source_evidence_uncached",
+            new=AsyncMock(return_value=evidence),
+        ) as retrieve:
+            first = await factual_evidence.retrieve_multi_source_evidence(
+                "What is Python?"
+            )
+            first["title"] = "Modified by caller"
+            second = await factual_evidence.retrieve_multi_source_evidence(
+                "What is Python?"
+            )
+        self.assertEqual(retrieve.await_count, 1)
+        self.assertEqual(second["title"], "Python")
+
+    async def test_cache_is_bounded(self):
+        factual_evidence.EVIDENCE_CACHE_MAX_ENTRIES = 2
+        try:
+            with patch.object(
+                factual_evidence,
+                "_retrieve_multi_source_evidence_uncached",
+                new=AsyncMock(side_effect=[
+                    {"title": "A"}, {"title": "B"}, {"title": "C"}
+                ]),
+            ):
+                await factual_evidence.retrieve_multi_source_evidence("What is A?")
+                await factual_evidence.retrieve_multi_source_evidence("What is B?")
+                await factual_evidence.retrieve_multi_source_evidence("What is C?")
+            self.assertLessEqual(
+                len(factual_evidence._EVIDENCE_CACHE),
+                factual_evidence.EVIDENCE_CACHE_MAX_ENTRIES,
+            )
+        finally:
+            factual_evidence.EVIDENCE_CACHE_MAX_ENTRIES = 128
