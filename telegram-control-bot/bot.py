@@ -560,6 +560,13 @@ async def service_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Run /services to see supported service names."
         )
         return
+
+    name, action = (arg.lower() for arg in context.args)
+    if name not in SERVICE_ALLOWLIST:
+        await update.effective_message.reply_text(
+            "Service not allowed. Use /services to see the approved list."
+        )
+        return
     if action not in {"status", "start", "stop", "restart"}:
         await update.effective_message.reply_text(
             "Action not allowed. Choose status, start, stop, or restart."
@@ -575,7 +582,7 @@ async def service_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             InlineKeyboardButton("Cancel", callback_data="svc:cancel"),
         ]])
         await update.effective_message.reply_text(
-            f"Confirm {action} for {name}?",
+            f"⚠️ Confirm {action} for service '{name}'?",
             reply_markup=keyboard,
         )
         return
