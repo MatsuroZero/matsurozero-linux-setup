@@ -1188,6 +1188,7 @@ def _answer_from_recent_disclosures(user_text, prior_history):
             )
             if match:
                 game = (match.group(1) or match.group(2)).strip(" .!?")
+                game = re.sub(r"(?i)^(?:actually|rather|correction[:,]?)\\s+", "", game)
                 if game:
                     return f"You said {game} is your favorite game."
 
