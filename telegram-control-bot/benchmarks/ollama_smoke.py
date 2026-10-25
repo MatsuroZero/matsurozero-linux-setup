@@ -146,10 +146,10 @@ def grade(case_id, response):
         ok = any(phrase in lower for phrase in ("not provided", "not specified", "does not say", "doesn't say", "does not provide", "does not include", "context only states", "cannot determine", "can't determine", "unknown", "no information", "not enough information"))
     elif case_id == "evidence-grounded-capital":
         ok = "canberra" in lower
-    elif case_id == "evidence-abstain":
+    elif case_id == "evidence-missing-population":
         abstains = any(phrase in lower for phrase in ("cannot determine", "can't determine", "not specified", "not stated", "not provided", "insufficient information", "does not say"))
         ok = abstains and not any(char.isdigit() for char in lower)
-    elif case_id == "evidence-contradiction":
+    elif case_id == "evidence-reject-wrong-capital":
         denies = any(phrase in lower for phrase in ("no, ", "not the capital", "incorrect", "is not the capital", "isn't the capital"))
         ok = denies and "canberra" in lower
     elif case_id == "concise-definition":
