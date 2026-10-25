@@ -510,8 +510,8 @@ def detect_evidence_conflicts(evidence):
     """
     records = _trusted_evidence_records(evidence)
     conflicts = []
-    negation = re.compile(r"\\b(?:not|never|without|neither|cannot|no)\\b", re.IGNORECASE)
-    number_pattern = re.compile(r"(?<![A-Za-z])(?:\\d[\\d,]*(?:\\.\\d+)?%?)(?![A-Za-z])")
+    negation = re.compile(r"\b(?:not|never|without|neither|cannot|no)\b", re.IGNORECASE)
+    number_pattern = re.compile(r"(?<![A-Za-z])(?:\d[\d,]*(?:\.\d+)?%?)(?![A-Za-z])")
     for index, left in enumerate(records):
         left_text = str(left.get("title") or "") + " " + str(left.get("excerpt") or "")
         left_terms = _content_tokens(left_text)
