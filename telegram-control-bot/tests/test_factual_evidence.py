@@ -328,6 +328,49 @@ class EvidenceFormattingTests(unittest.TestCase):
         )
         self.assertEqual(result["status"], "unavailable")
 
+    def test_claim_level_check_fails_closed_when_sources_conflict(self):
+        evidence = {
+            "title": "Capital of Australia",
+            "excerpt": "Canberra is the capital city of Australia.",
+            "url": "https://en.wikipedia.org/?curid=123",
+            "additional_sources": [{
+                "title": "Capital discussion",
+                "excerpt": "Canberra is not the capital city of Australia.",
+                "url": "https://stackoverflow.com/a/456",
+                "source": "Stack Overflow answer",
+            }],
+        }
+        result = factual_evidence.assess_claim_level_support(
+            "What is the capital of Australia?",
+            "Canberra is the capital city of Australia.",
+            evidence,
+        )
+        self.assertEqual(result["status"], "insufficient_overlap")
+        self.assertEqual(result["reason"], "evidence_conflict")
+        self.assertTrue(result["conflicts"])
+        warning = factual_evidence.format_support_warning(result)
+        self.assertIn("sources appear to disagree", warning)
+        self.assertIn("unverified", warning)
+
+    def test_claim_level_check_allows_matching_sources_with_equivalent_numbers(self):
+        evidence = {
+            "title": "Example",
+            "excerpt": "The system processed 1,000 requests.",
+            "url": "https://en.wikipedia.org/?curid=123",
+            "additional_sources": [{
+                "title": "Example discussion",
+                "excerpt": "The system processed 1000 requests.",
+                "url": "https://stackoverflow.com/a/456",
+                "source": "Stack Overflow answer",
+            }],
+        }
+        result = factual_evidence.assess_claim_level_support(
+            "How many requests were processed?",
+            "The system processed 1,000 requests.",
+            evidence,
+        )
+        self.assertEqual(result["status"], "candidate_supported")
+
     def test_warning_does_not_claim_answer_is_false(self):
         warning = factual_evidence.format_support_warning()
         self.assertIn("unverified", warning)
