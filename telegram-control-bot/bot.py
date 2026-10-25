@@ -9,6 +9,8 @@ from factual_evidence import (
     format_multi_source_attribution,
     format_multi_source_evidence_for_prompt,
     format_support_warning,
+    format_time_sensitive_unavailable_prompt,
+    is_time_sensitive_question,
     retrieve_multi_source_evidence,
 )
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -1406,6 +1408,9 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         evidence_prompt = format_multi_source_evidence_for_prompt(evidence)
         if evidence_prompt:
             system_prompt += "\n\n" + evidence_prompt
+        elif is_time_sensitive_question(user_text):
+            # Without a live source, current facts must be explicitly unverified.
+            system_prompt += "\n\n" + format_time_sensitive_unavailable_prompt()
         if arithmetic_result is not None:
             system_prompt += (
                 "\n\nVERIFIED CALCULATION: A deterministic arithmetic evaluator calculated "
