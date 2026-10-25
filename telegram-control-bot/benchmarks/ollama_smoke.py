@@ -55,6 +55,21 @@ CASES = [
         "check": "backup_cause",
     },
     {
+        "id": "basic-fact-capital",
+        "prompt": "What is the capital of Australia? Answer with the city name only.",
+        "check": "canberra",
+    },
+    {
+        "id": "basic-fact-boiling-point",
+        "prompt": "At standard atmospheric pressure, at what temperature does pure water boil in Celsius? Answer briefly.",
+        "check": "boiling_point",
+    },
+    {
+        "id": "basic-fact-hexagon",
+        "prompt": "How many sides does a hexagon have? Answer with the number only.",
+        "check": "six_sides",
+    },
+    {
         "id": "exact-list-size",
         "prompt": "List exactly three everyday uses of a web browser, as a numbered list and nothing else.",
         "check": "three_numbered",
@@ -101,6 +116,12 @@ def grade(case_id, response):
         ok = bool(re.search(r"\bjupiter\b", lower))
     elif case_id == "causal-explanation":
         ok = any(term in lower for term in ("restore", "recover", "replace", "copy", "preventing data loss", "prevent data loss", "data is protected")) and any(term in lower for term in ("data", "files", "information"))
+    elif case_id == "basic-fact-capital":
+        ok = bool(re.search(r"\\bcanberra\\b", lower))
+    elif case_id == "basic-fact-boiling-point":
+        ok = bool(re.search(r"\\b100\\s*(?:°\\s*)?(?:c|celsius)?\\b", lower))
+    elif case_id == "basic-fact-hexagon":
+        ok = bool(re.search(r"\\b6\\b|\\bsix\\b", lower))
     elif case_id == "exact-list-size":
         numbers = re.findall(r"(?m)^\s*\d+[.)]\s+(.+)$", text)
         ok = len(numbers) == 3
