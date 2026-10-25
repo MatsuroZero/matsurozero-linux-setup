@@ -523,7 +523,7 @@ MEMORY_CATEGORIES = {
     "projects": ("project", "localnexus", "dashboard", "flask", "software", "coding", "repository", "github"),
     "linux": ("linux", "cachyos", "hyprland", "serpantinum", "quickshell", "desktop", "ollama", "hardware", "android", "phone", "network", "server"),
     "gaming": ("gaming", "game", "roblox", "growtopia", "minecraft", "terraria", "stardew valley", "dead cells", "undertale", "deltarune", "hades", "factorio", "hollow knight", "vice city", "gta", "genshin", "wuthering waves", "honkai", "fortnite", "anime", "jojo", "media"),
-    "creative": ("creative", "writing", "novel", "worldbuilding", "fiction", "story", "mana", "character"),
+    "creative": ("creative", "writing", "novel", "worldbuilding", "fiction", "story", "mana", "character", "show", "shows", "series", "television", "breaking bad"),
     "food": ("food", "eat", "eating", "meal", "recipe", "cooking", "restaurant", "hungry", "drink", "snack", "pizza", "mozzarella", "cheese"),
 }
 PROFILE_LABELS = [
@@ -716,16 +716,36 @@ def _extract_explicit_temporary_fact(session, user_text):
         r"\bmy\s+(favorite|favourite)\s+(anime|game|food|movie|show|book|song|artist)\s+is\s+(.+?)(?=[.!?](?:\s|$)|$)",
         text, flags=re.I,
     )
-    if favorite:
-        kind, subject = favorite.group(2).casefold(), favorite.group(3).strip(" .!?")
+    reverse_favorite = re.search(
+        r"\b(.+?)\s+is\s+my\s+(favorite|favourite)\s+(anime|game|food|movie|show|book|song|artist)\b",
+        text, flags=re.I,
+    )
+    if favorite or reverse_favorite:
+        if favorite:
+            kind, subject = favorite.group(2).casefold(), favorite.group(3).strip(" .!?")
+        else:
+            subject, kind = reverse_favorite.group(1).strip(" .!?"), reverse_favorite.group(3).casefold()
         if subject and len(subject) <= 100:
-            category = "creative" if kind in {"anime", "movie", "show", "book", "song", "artist"} else ("gaming" if kind == "game" else "food")
-            return _add_temporary_fact(session, category, f"Matthew's favorite {kind} is {subject}")
+            category = "gaming" if kind == "game" else ("food" if kind == "food" else "creative")
+            _add_temporary_fact(session, category, f"Matthew's favorite {kind} is {subject}")
+            return True
     # Also catch explicitly capitalized "I am Matthew" / "I'm Matthew" without
     # misclassifying ordinary lowercase statements such as "I'm happy".
     name = re.search(r"\b(?:I am|I'm)\s+([A-Z][a-z]{1,30})\b", text)
     if name:
         return _add_temporary_fact(session, "identity", f"Matthew's name is {name.group(1)}")
+
+    watched = re.search(
+        r"\bI\s+(?:(?:personally|really)\s+)*(love|like|enjoy|prefer)\s+(?:watching|to watch)\s+"
+        r"(.+?)(?=\s+(?:it's|its|it is|which is|because|since)\b|[.!?]|$)",
+        text, flags=re.I,
+    )
+    if watched:
+        verb, subject = watched.group(1).casefold(), watched.group(2).strip(" .!?")
+        if subject and len(subject) <= 100:
+            preferred_verb = {"love": "loves", "like": "likes", "enjoy": "enjoys", "prefer": "prefers"}[verb]
+            _add_temporary_fact(session, "creative", f"Matthew {preferred_verb} watching {subject}")
+            return True
 
     preference = re.search(
         r"\bI\s+(?:(?:personally|really)\s+)*(love|like|enjoy|prefer|dislike|hate)\s+"
@@ -773,9 +793,14 @@ async def _extract_temporary_facts(key, session, user_text):
             "i work ", "i play ", "i want ", "i need ", "i dislike ", "i hate ",
             "i used to ", "i'm studying ", "i am studying ", "i'm learning ",
             "i am learning ", "my pc", "my phone", "my computer", "my project",
-            "my favorite", "my favourite", "my main interest is ", "i'm a ", "i am a ",
+            "my main interest is ", "i'm a ", "i am a ",
         )
-        if not any(cue in lowered for cue in disclosure_cues):
+        has_favorite_disclosure = bool(re.search(
+            r"\bmy\s+(?:favorite|favourite)\s+(?:anime|game|food|movie|show|book|song|artist)\s+is\b"
+            r"|\bis\s+my\s+(?:favorite|favourite)\s+(?:anime|game|food|movie|show|book|song|artist)\b",
+            lowered,
+        ))
+        if not any(cue in lowered for cue in disclosure_cues) and not has_favorite_disclosure:
             return
         if _extract_explicit_temporary_fact(session, user_text):
             return
@@ -1055,6 +1080,44 @@ async def active_chat_callback(
     raise ApplicationHandlerStop
 
 
+def _answer_from_recent_disclosures(user_text, prior_history):
+    """Answer simple recall questions from explicit recent user statements, without guessing."""
+    query = " ".join(str(user_text or "").casefold().split())
+    if not isinstance(prior_history, list):
+        return None
+
+    if re.search(r"\b(?:what(?:'s| is)\s+)?my\s+favorite\s+game\b|\bwhat\s+game\s+did\s+i\s+say", query):
+        for item in reversed(prior_history):
+            if not isinstance(item, dict) or item.get("role") != "user":
+                continue
+            content = str(item.get("content", ""))
+            match = re.search(
+                r"\bmy\s+(?:favorite|favourite)\s+game\s+is\s+(.+?)(?=[.!?](?:\s|$)|$)"
+                r"|\b(.+?)\s+is\s+my\s+(?:favorite|favourite)\s+game\b",
+                content, flags=re.I,
+            )
+            if match:
+                game = (match.group(1) or match.group(2)).strip(" .!?")
+                if game:
+                    return f"You said {game} is your favorite game."
+
+    if re.search(r"\bwhat\s+(?:show|series|tv show)s?\b|\bwhat\s+show\s+did\s+i\s+tell\s+you\b", query):
+        for item in reversed(prior_history):
+            if not isinstance(item, dict) or item.get("role") != "user":
+                continue
+            content = str(item.get("content", ""))
+            match = re.search(
+                r"\bI\s+(?:really\s+|personally\s+)*(?:love|like|enjoy|prefer)\s+(?:watching|to watch)\s+"
+                r"(.+?)(?=\s+(?:it['’]s|its|it is|which is|because|since)\b|[.!?]|$)",
+                content, flags=re.I,
+            )
+            if match:
+                show = match.group(1).strip(" .!?")
+                if show:
+                    return f"You told me you like watching {show}."
+    return None
+
+
 async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     key = _chat_key(update)
     session = CHAT_SESSIONS.get(key)
@@ -1148,6 +1211,12 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     thinking_message = None
     try:
+        direct_answer = _answer_from_recent_disclosures(user_text, history[:-1])
+        if direct_answer:
+            session["history"] = (history + [{"role": "assistant", "content": direct_answer}])[-12:]
+            await message.reply_text(direct_answer)
+            return
+
         try:
             thinking_message = await message.reply_text(
                 "> _Thinking…_",
