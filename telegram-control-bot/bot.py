@@ -525,7 +525,7 @@ MEMORY_CATEGORIES = {
     "projects": ("project", "localnexus", "dashboard", "flask", "software", "coding", "repository", "github"),
     "linux": ("linux", "cachyos", "hyprland", "serpantinum", "quickshell", "desktop", "ollama", "hardware", "android", "phone", "network", "server"),
     "gaming": ("gaming", "game", "roblox", "growtopia", "minecraft", "terraria", "stardew valley", "dead cells", "undertale", "deltarune", "hades", "factorio", "hollow knight", "vice city", "gta", "genshin", "wuthering waves", "honkai", "fortnite", "anime", "jojo", "media"),
-    "creative": ("creative", "writing", "novel", "worldbuilding", "fiction", "story", "mana", "character", "show", "shows", "series", "television", "breaking bad"),
+    "creative": ("creative", "writing", "novel", "worldbuilding", "fiction", "story", "mana", "character", "series", "television", "breaking bad"),
     "food": ("food", "eat", "eating", "meal", "recipe", "cooking", "restaurant", "hungry", "drink", "snack", "pizza", "mozzarella", "cheese"),
 }
 PROFILE_LABELS = [
@@ -539,11 +539,16 @@ PROFILE_LABELS = [
 ]
 
 def _text_categories(text):
+    """Classify text by whole terms/phrases, not accidental substrings."""
     lowered = str(text or "").casefold()
-    return {
-        category for category, words in MEMORY_CATEGORIES.items()
-        if any(word in lowered for word in words)
-    }
+    categories = set()
+    for category, words in MEMORY_CATEGORIES.items():
+        for word in words:
+            pattern = r"(?<!\\w)" + re.escape(word.casefold()) + r"(?!\\w)"
+            if re.search(pattern, lowered):
+                categories.add(category)
+                break
+    return categories
 
 
 def _profile_sections(profile):
