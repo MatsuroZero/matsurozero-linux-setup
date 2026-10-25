@@ -59,7 +59,7 @@ CASES = [
     {
         "name": "answer repeats only question terms",
         "question": "What is the capital of Australia?",
-        "answer": "The capital of Australia is a city.",
+        "answer": "The capital of Australia.",
         "evidence": {"title": "Canberra", "excerpt": "Canberra is the capital city of Australia."},
         "expected": "insufficient_overlap",
     },
