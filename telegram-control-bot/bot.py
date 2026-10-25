@@ -522,9 +522,9 @@ MEMORY_CATEGORIES = {
     "learning": ("learning", "study", "chemistry", "physics", "law", "first principles", "obsidian", "notes"),
     "projects": ("project", "localnexus", "dashboard", "flask", "software", "coding", "repository", "github"),
     "linux": ("linux", "cachyos", "hyprland", "serpantinum", "quickshell", "desktop", "ollama", "hardware", "android", "phone", "network", "server"),
-    "gaming": ("gaming", "game", "roblox", "growtopia", "minecraft", "vice city", "gta", "genshin", "anime", "jojo", "hollow knight", "factorio", "fortnite", "media"),
+    "gaming": ("gaming", "game", "roblox", "growtopia", "minecraft", "terraria", "stardew valley", "dead cells", "undertale", "deltarune", "hades", "factorio", "hollow knight", "vice city", "gta", "genshin", "wuthering waves", "honkai", "fortnite", "anime", "jojo", "media"),
     "creative": ("creative", "writing", "novel", "worldbuilding", "fiction", "story", "mana", "character"),
-    "food": ("food", "eat", "eating", "meal", "recipe", "cooking", "restaurant", "hungry", "drink", "snack"),
+    "food": ("food", "eat", "eating", "meal", "recipe", "cooking", "restaurant", "hungry", "drink", "snack", "pizza", "mozzarella", "cheese"),
 }
 PROFILE_LABELS = [
     ("Identity and perspective", "identity"), ("ABOUT MATTHEW", "identity"), ("Overview", "identity"),
