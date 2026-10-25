@@ -916,11 +916,24 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
     text = message.text if message else None
 
     command_word = text.strip().split(maxsplit=1)[0].split("@", 1)[0].lower() if text and text.strip() else ""
+    if command_word == "/temp":
+        facts = session.get("temporary_facts", [])
+        if not facts:
+            await message.reply_text("🧠 No temporary facts collected yet. I'll add useful, deduplicated facts as we chat.")
+        else:
+            lines = ["🧠 Temporary facts for this chat only:", ""]
+            lines.extend(f"- [{item.get('category', 'identity')}] {item.get('fact', '')}" for item in facts)
+            await message.reply_text("\\n".join(lines))
+        return
+
     if command_word == "/bye":
         task = session.get("task")
+        memory_task = session.get("memory_task")
         CHAT_SESSIONS.pop(key, None)
         if task and task is not asyncio.current_task() and not task.done():
             task.cancel()
+        if memory_task and memory_task is not asyncio.current_task() and not memory_task.done():
+            memory_task.cancel()
         await message.reply_text(
             f"👋 Ollama chat ended (model: {session['model']}). "
             "Ollama remains running. Send /chat whenever you want to start again."
@@ -962,6 +975,12 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             )
         except TelegramError:
             log.warning("Could not send Ollama thinking indicator", exc_info=True)
+
+        # Ensure the previous message's background memory extraction finishes before
+        # building this reply, so newly learned facts are available on the next turn.
+        pending_memory = session.get("memory_task")
+        if pending_memory is not None and not pending_memory.done():
+            await pending_memory
 
         async with httpx.AsyncClient(
             timeout=httpx.Timeout(OLLAMA_TIMEOUT, connect=5.0)
