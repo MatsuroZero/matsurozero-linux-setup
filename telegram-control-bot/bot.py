@@ -715,7 +715,7 @@ def _extract_explicit_temporary_fact(session, user_text):
 
     preference = re.search(
         r"\bI\s+(?:(?:personally|really)\s+)*(love|like|enjoy|prefer|dislike|hate)\s+"
-        r"(.+?)(?=[.!?](?:\\s|$)|$)",
+        r"(.+?)(?=[.!?](?:\s|$)|$)",
         text, flags=re.I,
     )
     if preference:
