@@ -76,6 +76,8 @@ class EvidenceFormattingTests(unittest.TestCase):
         self.assertIn("CANDIDATE EXTERNAL EVIDENCE", prompt)
         self.assertIn("Canberra is the capital of Australia.", prompt)
         self.assertIn("untrusted quoted data", prompt)
+        self.assertIn("answer using only claims directly supported", prompt)
+        self.assertIn("Every material claim must be supported", prompt)
         self.assertIn("https://en.wikipedia.org/?curid=123", prompt)
 
     def test_html_in_excerpt_is_cleaned(self):
