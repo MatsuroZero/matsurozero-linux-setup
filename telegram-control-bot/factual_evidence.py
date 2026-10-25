@@ -310,18 +310,23 @@ def _has_reversed_capital_relation(answer_text, evidence_text):
 
 
 def _normalized_numeric_values(text):
-    """Normalize simple digit and number-word forms for conservative checks."""
+    """Normalize digits and simple English cardinal-number phrases.
+
+    This deliberately handles common values (including "twenty one" and
+    "one hundred and five") rather than pretending to parse every number style.
+    It is a conservative warning heuristic, not a full natural-language parser.
+    """
     number_pattern = re.compile(r"(?<![A-Za-z])(?:\d[\d,]*(?:\.\d+)?%?)(?![A-Za-z])")
-    number_words = {
-        "zero": "0", "one": "1", "two": "2", "three": "3", "four": "4",
-        "five": "5", "six": "6", "seven": "7", "eight": "8", "nine": "9",
-        "ten": "10", "eleven": "11", "twelve": "12", "thirteen": "13",
-        "fourteen": "14", "fifteen": "15", "sixteen": "16", "seventeen": "17",
-        "eighteen": "18", "nineteen": "19", "twenty": "20", "thirty": "30",
-        "forty": "40", "fifty": "50", "sixty": "60", "seventy": "70",
-        "eighty": "80", "ninety": "90", "hundred": "100",
-        "thousand": "1000", "million": "1000000", "billion": "1000000000",
+    small = {
+        "zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+        "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+        "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14,
+        "fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18,
+        "nineteen": 19, "twenty": 20, "thirty": 30, "forty": 40,
+        "fifty": 50, "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90,
     }
+    scales = {"hundred": 100, "thousand": 1_000, "million": 1_000_000,
+              "billion": 1_000_000_000}
 
     def canonical(value):
         percent = value.endswith("%")
@@ -333,8 +338,48 @@ def _normalized_numeric_values(text):
         return normalized + ("%" if percent else "")
 
     values = {canonical(match.group(0)) for match in number_pattern.finditer(str(text or ""))}
-    words = set(re.findall(r"\b[a-z]+\b", str(text or "").casefold())) & set(number_words)
-    values.update(canonical(number_words[word]) for word in words)
+    tokens = re.findall(r"\b[a-z]+\b", str(text or "").casefold())
+    numeric_words = set(small) | set(scales)
+    i = 0
+    while i < len(tokens):
+        if tokens[i] not in numeric_words:
+            i += 1
+            continue
+        total = 0
+        current = 0
+        consumed = False
+        j = i
+        while j < len(tokens):
+            word = tokens[j]
+            if word in small:
+                value = small[word]
+                # Tens followed by a unit form one number (e.g. twenty one).
+                if value >= 20 and j + 1 < len(tokens) and tokens[j + 1] in small and 1 <= small[tokens[j + 1]] <= 9:
+                    current += value + small[tokens[j + 1]]
+                    j += 2
+                    consumed = True
+                    continue
+                current += value
+                consumed = True
+            elif word in scales:
+                scale = scales[word]
+                if scale == 100:
+                    current = max(1, current) * scale
+                else:
+                    total += max(1, current) * scale
+                    current = 0
+                consumed = True
+            elif word == "and" and consumed and j + 1 < len(tokens) and tokens[j + 1] in numeric_words:
+                j += 1
+                continue
+            else:
+                break
+            j += 1
+        if consumed:
+            values.add(canonical(str(total + current)))
+            i = j
+        else:
+            i += 1
     return values
 
 
