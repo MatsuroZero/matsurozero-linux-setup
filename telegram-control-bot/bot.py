@@ -5,6 +5,7 @@ import httpx
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Thread
 import os
+import re
 import shutil
 import subprocess
 import time
@@ -514,20 +515,92 @@ def _save_ollama_memory(memory):
         pass
 
 
-def _ollama_system_prompt():
+MEMORY_CATEGORIES = {
+    "identity": ("identity", "about matthew", "overview", "background", "age", "egypt", "law student"),
+    "style": ("style", "conversation", "tone", "personality", "itsuki", "spoiler", "response", "food"),
+    "learning": ("learning", "study", "chemistry", "physics", "law", "first principles", "obsidian", "notes"),
+    "projects": ("project", "localnexus", "dashboard", "flask", "software", "coding", "repository", "github"),
+    "linux": ("linux", "cachyos", "hyprland", "serpantinum", "quickshell", "desktop", "ollama", "hardware", "android", "phone", "network", "server"),
+    "gaming": ("gaming", "game", "roblox", "growtopia", "minecraft", "vice city", "gta", "genshin", "anime", "jojo", "hollow knight", "factorio", "fortnite", "media"),
+    "creative": ("creative", "writing", "novel", "worldbuilding", "fiction", "story", "mana", "character"),
+    "food": ("food", "eat", "eating", "meal", "recipe", "cooking", "restaurant", "hungry", "drink", "snack"),
+}
+PROFILE_LABELS = [
+    ("Identity and perspective", "identity"), ("ABOUT MATTHEW", "identity"), ("Overview", "identity"),
+    ("ASSISTANT STYLE", "style"), ("Conversation Style", "style"),
+    ("LEARNING AND PROJECTS", "learning"), ("Learning and Projects", "learning"),
+    ("LINUX AND HARDWARE", "linux"), ("Linux and Technology", "linux"),
+    ("GAMING AND MEDIA", "gaming"), ("Gaming and Media", "gaming"),
+    ("CREATIVE WRITING", "creative"), ("Creative Interests", "creative"),
+    ("GENERAL GUIDANCE", "style"),
+]
+
+def _text_categories(text):
+    lowered = str(text or "").casefold()
+    return {category for category, words in MEMORY_CATEGORIES.items()
+            if any(word in lowered for word in words)}
+
+def _profile_sections(profile):
+    """Split saved profiles at known headings without making another model call."""
+    text = str(profile or "").strip()
+    if not text:
+        return {}
+    labels = sorted(PROFILE_LABELS, key=lambda item: len(item[0]), reverse=True)
+    pattern = re.compile(r"(?i)(?<![\\w])(" + "|".join(re.escape(label) for label, _ in labels) + r")\\s*:")
+    matches = list(pattern.finditer(text))
+    sections = {}
+    if matches:
+        for index, match in enumerate(matches):
+            label = next(label for label, _ in labels if label.casefold() == match.group(1).casefold())
+            category = next(category for name, category in labels if name.casefold() == label.casefold())
+            end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+            content = text[match.end():end].strip(" \\n\\t:-")
+            if content:
+                sections.setdefault(category, []).append(content)
+        return {key: " ".join(value) for key, value in sections.items()}
+    # Free-form legacy profiles are indexed sentence by sentence.
+    for sentence in re.split(r"(?<=[.!?])\\s+", text):
+        categories = _text_categories(sentence) or {"identity"}
+        for category in categories:
+            sections.setdefault(category, []).append(sentence.strip())
+    return {key: " ".join(value) for key, value in sections.items()}
+
+def _ollama_system_prompt(user_text=""):
+    """Use a tiny always-on prompt plus only the memory relevant to this message."""
     memory = _load_ollama_memory()
+    query_categories = _text_categories(user_text)
+    sections = _profile_sections(memory["profile"])
     parts = [
-        "You are the user's private, locally running Ollama assistant. Be useful, "
-        "honest about uncertainty, and adapt to the user's saved preferences. "
-        "Do not claim to remember details that are not in the provided memory or chat history.",
+        "You are the local Ollama AI assistant; the human user is Matthew. "
+        "Never claim Matthew's identity, possessions, history, or projects as your own. "
+        "Use first person only for yourself. Be accurate, concise, explain why when useful, "
+        "and never invent personal details absent from retrieved memory or this conversation.",
     ]
-    if memory["profile"].strip():
-        parts.append("USER PROFILE AND PREFERENCES:\n" + memory["profile"].strip()[:6000])
-    if memory["facts"]:
-        parts.append("PERSISTENT USER FACTS:\n" + "\n".join(
-            f"- {fact[:500]}" for fact in memory["facts"][:50]
-        ))
-    return "\n\n".join(parts)
+    # Identity and response style are the always-on memory layer, capped to stay small.
+    for category in ("identity", "style"):
+        content = sections.get(category, "").strip()
+        if content:
+            parts.append(f"CORE {category.upper()} CONTEXT:\\n{content[:900]}")
+    # Load topic-specific profile sections only when the current message matches.
+    for category in sorted(query_categories - {"identity", "style"}):
+        content = sections.get(category, "").strip()
+        if content:
+            parts.append(f"RELEVANT {category.upper()} MEMORY:\\n{content[:1400]}")
+    relevant_facts = []
+    for fact in memory["facts"]:
+        explicit = re.match(r"^([a-z_-]+)\\s*:\\s*(.*)$", fact, flags=re.I)
+        if explicit:
+            category, body = explicit.group(1).casefold(), explicit.group(2)
+            if category in MEMORY_CATEGORIES and category not in query_categories:
+                continue
+            if category in MEMORY_CATEGORIES:
+                fact = body
+        categories = _text_categories(fact)
+        if not categories or not query_categories or categories.intersection(query_categories):
+            relevant_facts.append(fact)
+    if relevant_facts:
+        parts.append("RELEVANT SAVED FACTS:\\n" + "\\n".join(f"- {fact[:240]}" for fact in relevant_facts[:8]))
+    return "\\n\\n".join(parts)
 
 
 def _split_telegram_text(text, limit=3900):
@@ -756,8 +829,9 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
                 f"{OLLAMA_BASE_URL}/api/chat",
                 json={
                     "model": session["model"],
-                    "messages": [{"role": "system", "content": _ollama_system_prompt()}] + history,
+                    "messages": [{"role": "system", "content": _ollama_system_prompt(user_text)}] + history,
                     "stream": False,
+                    "keep_alive": "10m",
                     "options": {"num_ctx": 2048},
                 },
             )
@@ -834,8 +908,11 @@ async def ollama_remember_command(update: Update, context: ContextTypes.DEFAULT_
         return
     fact = " ".join(context.args).strip()
     if not fact:
-        await update.effective_message.reply_text("Usage: /remember <detail to retain for future Ollama chats>")
+        await update.effective_message.reply_text("Usage: /remember <detail> or /remember <category>: <detail>\\nCategories: identity, style, learning, projects, linux, gaming, creative, food")
         return
+    category_match = re.match(r"^(identity|style|learning|projects|linux|gaming|creative|food)\\s*:\\s*(.+)$", fact, flags=re.I)
+    if category_match:
+        fact = f"{category_match.group(1).casefold()}: {category_match.group(2).strip()}"
     memory = _load_ollama_memory()
     if any(existing.casefold() == fact.casefold() for existing in memory["facts"]):
         await update.effective_message.reply_text("That detail is already saved.")
