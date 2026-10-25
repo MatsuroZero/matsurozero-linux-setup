@@ -606,8 +606,11 @@ def _ollama_system_prompt(user_text="", temporary_facts=None):
         "Itsuki, without an AI disclaimer. When asked about yourself, describe your conversational persona "
         "without inventing real-world experiences. Matthew's saved profile, devices, games, studies, and "
         "projects belong to Matthew, not you. Use those details only when relevant; never repeatedly explain "
-        "that distinction. Keep character-play friendly and non-romantic; do not claim to be Matthew's spouse, "
-        "waifu, or exclusive partner, and do not make claims of endless love. Be warm without being clingy."
+        "that distinction. When the user clearly signals fiction or roleplay, understand it as a fictional "
+        "scenario rather than a factual claim and respond in character when safe. Do not repeatedly repeat "
+        "a boundary: if a requested scene crosses a boundary, state it briefly once and continue with a "
+        "safe adjacent scene. Keep roleplay non-romantic and do not portray yourself as the user's spouse, "
+        "waifu, or romantic partner. Be warm without clingy declarations."
     ]
     for category in ("identity", "style"):
         content = sections.get(category, "").strip()
@@ -654,7 +657,64 @@ def _ollama_system_prompt(user_text="", temporary_facts=None):
                 "not you. Use them only when relevant and never claim them as your own:\n"
                 + "\n".join(lines)
             )
+    if "gaming" in query_categories:
+        parts.append(
+            "GAME RECOMMENDATIONS: When asked for games similar to a title, rank by shared core "
+            "mechanics, not merely broad genre or popularity. Explain the specific overlap in one short "
+            "phrase. Prefer genuinely new recommendations over games already known from Matthew's profile; "
+            "if mentioning a familiar game, label it as a comparison rather than a new discovery. For Terraria, "
+            "prioritize 2D sandbox exploration, mining, crafting, building, progression, and boss combat. "
+            "Separate close matches from looser alternatives, and do not pad the list with unrelated games."
+        )
     return "\n\n".join(parts)
+
+
+def _add_temporary_fact(session, category, fact):
+    """Add one deterministic, explicitly stated fact without spending model time."""
+    fact = " ".join(str(fact or "").split()).strip()[:180]
+    if category not in MEMORY_CATEGORIES or not fact:
+        return False
+    existing = session.setdefault("temporary_facts", [])
+    normalized = re.sub(r"[^a-z0-9]+", " ", fact.casefold()).strip()
+    for item in existing:
+        if not isinstance(item, dict):
+            continue
+        known = re.sub(r"[^a-z0-9]+", " ", str(item.get("fact", "")).casefold()).strip()
+        if normalized == known:
+            return False
+    existing.append({"category": category, "fact": fact})
+    session["temporary_facts"] = existing[-20:]
+    log.info("Temporary memory: added deterministic fact (category=%s, total=%d)", category, len(session["temporary_facts"]))
+    return True
+
+
+def _extract_explicit_temporary_fact(session, user_text):
+    """Fast path for clear first-person disclosures; no second model needed."""
+    text = " ".join(str(user_text or "").split()).strip()
+    name = re.search(r"\bmy name is\s+([A-Z][A-Za-z'-]{1,30})\b", text, flags=re.I)
+    if name:
+        return _add_temporary_fact(session, "identity", f"Matthew's name is {name.group(1)}")
+
+    preference = re.search(
+        r"\bI\s+(?:really\s+)?(love|like|enjoy|prefer|dislike|hate)\s+(.+?)[.!?]*$",
+        text, flags=re.I,
+    )
+    if preference:
+        verb, subject = preference.group(1).casefold(), preference.group(2).strip(" .!?")
+        if subject and len(subject) <= 100:
+            categories = _text_categories(subject)
+            lowered_subject = subject.casefold()
+            if any(word in lowered_subject for word in ("pizza", "mozzarella", "cheese", "food", "recipe", "cooking")):
+                category = "food"
+            elif categories.intersection({"gaming"}):
+                category = "gaming"
+            elif categories.intersection({"creative", "learning", "projects", "linux"}):
+                category = sorted(categories.intersection({"creative", "learning", "projects", "linux"}))[0]
+            else:
+                category = "style"
+            preferred_verb = {"love": "loves", "like": "likes", "enjoy": "enjoys", "prefer": "prefers", "dislike": "dislikes", "hate": "dislikes"}[verb]
+            return _add_temporary_fact(session, category, f"Matthew {preferred_verb} {subject}")
+    return False
 
 
 async def _extract_temporary_facts(key, session, user_text):
@@ -685,6 +745,8 @@ async def _extract_temporary_facts(key, session, user_text):
             r"\b(?:I am|I'm)\s+[A-Z][a-z]{1,30}\b", user_text
         ))
         if not explicit_name and not any(cue in lowered for cue in disclosure_cues):
+            return
+        if _extract_explicit_temporary_fact(session, user_text):
             return
         existing = session.setdefault("temporary_facts", [])
         system = (
@@ -976,7 +1038,12 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         # Keep the wait bounded; a slow local model must not hang the command.
         memory_task = session.get("memory_task")
         if memory_task is not None and not memory_task.done():
-            await asyncio.wait({memory_task}, timeout=2.0)
+            done, _ = await asyncio.wait({memory_task}, timeout=2.0)
+            if not done:
+                await message.reply_text(
+                    "🧠 Fact extraction is still running on the local model. Try /temp again in a moment."
+                )
+                return
         facts = [
             item for item in session.get("temporary_facts", [])
             if isinstance(item, dict)
@@ -1086,11 +1153,11 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
                     "options": {
                         "num_ctx": 2048,
                         "num_predict": 220,
-                        "temperature": 0.7,
-                        "top_p": 0.8,
-                        "top_k": 20,
-                        "repeat_penalty": 1.12,
-                        "presence_penalty": 0.35,
+                        "temperature": 0.58,
+                        "top_p": 0.85,
+                        "top_k": 30,
+                        "repeat_penalty": 1.15,
+                        "presence_penalty": 0.25,
                     },
                 },
             )
