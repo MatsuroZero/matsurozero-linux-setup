@@ -155,6 +155,19 @@ class EvidenceFormattingTests(unittest.TestCase):
         )
         self.assertEqual(result["status"], "candidate_supported")
 
+    def test_answer_with_no_question_independent_terms_is_not_marked_supported(self):
+        evidence = {
+            "title": "Canberra",
+            "excerpt": "Canberra is the capital city of Australia.",
+        }
+        result = factual_evidence.assess_answer_support(
+            "What is the capital of Australia?",
+            "The capital of Australia is a city.",
+            evidence,
+        )
+        self.assertEqual(result["status"], "insufficient_overlap")
+        self.assertEqual(result["reason"], "no_answer_specific_terms")
+
     def test_contradictory_negation_is_not_marked_supported(self):
         evidence = {
             "title": "Canberra",
