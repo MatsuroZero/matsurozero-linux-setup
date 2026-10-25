@@ -479,13 +479,17 @@ def assess_answer_support(question, answer, evidence):
     ]
     answer_polarity_terms = _content_tokens(answer_text)
     ranked_sentences = sorted(
-        (
-            len(answer_polarity_terms & _content_tokens(sentence))
-            / max(1, len(answer_polarity_terms)),
-            sentence,
-        )
-        for sentence in evidence_sentences
-    , key=lambda item: item[0], reverse=True)
+        [
+            (
+                len(answer_polarity_terms & _content_tokens(sentence))
+                / max(1, len(answer_polarity_terms)),
+                sentence,
+            )
+            for sentence in evidence_sentences
+        ],
+        key=lambda item: item[0],
+        reverse=True,
+    )
     if ranked_sentences and ranked_sentences[0][0] >= 0.5:
         best_sentence = ranked_sentences[0][1]
         if answer_is_negated != bool(negation_pattern.search(best_sentence)):
