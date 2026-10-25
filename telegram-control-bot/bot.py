@@ -681,7 +681,10 @@ async def _extract_temporary_facts(key, session, user_text):
             "my pc", "my phone", "my computer", "my project", "my favorite",
             "my favourite", "my main interest is ", "i'm a ", "i am a ",
         )
-        if not any(cue in lowered for cue in disclosure_cues):
+        explicit_name = bool(re.search(
+            r"\b(?:I am|I'm)\s+[A-Z][a-z]{1,30}\b", user_text
+        ))
+        if not explicit_name and not any(cue in lowered for cue in disclosure_cues):
             return
         existing = session.setdefault("temporary_facts", [])
         system = (
