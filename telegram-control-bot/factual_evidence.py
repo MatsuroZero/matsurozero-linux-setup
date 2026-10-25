@@ -352,6 +352,11 @@ def _normalized_numeric_values(text):
         if tokens[i] not in numeric_words:
             i += 1
             continue
+        # "one of the reasons" is an idiom/determiner, not a numeric claim.
+        # Ignore this occurrence while still allowing later numbers in the text.
+        if tokens[i] == "one" and i + 1 < len(tokens) and tokens[i + 1] == "of":
+            i += 1
+            continue
         total = 0
         current = 0
         consumed = False
