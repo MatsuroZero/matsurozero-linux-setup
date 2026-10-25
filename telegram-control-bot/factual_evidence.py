@@ -212,16 +212,36 @@ def format_evidence_for_prompt(evidence):
 
 def format_source_attribution(evidence):
     """List candidate source links transparently, without implying verification."""
-    records = _trusted_evidence_records(evidence)
-    if not records:
+    if not isinstance(evidence, dict):
         return ""
-    references = "\n".join(
-        f"{item['source']}: {item['title']}\n{item['url']}"
-        for item in records
-    )
+    candidates = [evidence]
+    extras = evidence.get("additional_sources", [])
+    if isinstance(extras, list):
+        candidates.extend(item for item in extras if isinstance(item, dict))
+    allowed_hosts = {"en.wikipedia.org", "stackoverflow.com"}
+    references = []
+    seen = set()
+    for item in candidates:
+        title = _clean_excerpt(item.get("title"))
+        url = str(item.get("url") or "").strip()
+        parsed = urlparse(url)
+        if (
+            not title or url in seen or parsed.scheme != "https"
+            or parsed.hostname not in allowed_hosts
+        ):
+            continue
+        source = str(item.get("source") or (
+            "Wikipedia" if parsed.hostname == "en.wikipedia.org" else "Stack Overflow"
+        ))
+        references.append(f"{source}: {title}\\n{url}")
+        seen.add(url)
+        if len(references) >= 3:
+            break
+    if not references:
+        return ""
     return (
-        "\n\nPotential references (retrieved automatically; not independently verified):\n"
-        + references
+        "\\n\\nPotential reference(s) (retrieved automatically; not independently verified):\\n"
+        + "\\n".join(references)
     )
 
 
