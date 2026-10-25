@@ -51,7 +51,7 @@ def should_retrieve_factual_evidence(question):
         r"\b(?:my favorite|my favourite|what did i say|what do i like|"
         r"what do you think|your opinion|recommend|recommendation|suggest|"
         r"roleplay|role-play|pretend|write a story|write a poem|brainstorm|"
-        r"current\b|currently|latest|today|right now|breaking news|"
+        r"current\s+(?:president|prime minister|leader|government|status|version|price|exchange rate|population|weather|law|rules|minister|king|monarch|ceo|owner|head coach|champion|title holder)\b|currently|latest|today|right now|breaking news|"
         r"this week|this month|weather)\b",
     )
     if any(re.search(pattern, lowered) for pattern in excluded):
