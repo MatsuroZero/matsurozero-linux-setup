@@ -71,6 +71,27 @@ CASES = [
         "expected": "insufficient_overlap",
     },
     {
+        "name": "contradictory negation",
+        "question": "Is Canberra the capital of Australia?",
+        "answer": "Canberra is not the capital of Australia.",
+        "evidence": {"title": "Canberra", "excerpt": "Canberra is the capital city of Australia."},
+        "expected": "insufficient_overlap",
+    },
+    {
+        "name": "unsupported named entity despite topic overlap",
+        "question": "Who developed the theory of general relativity?",
+        "answer": "Albert Einstein and Isaac Newton jointly developed general relativity.",
+        "evidence": {"title": "General relativity", "excerpt": "Albert Einstein developed the theory of general relativity."},
+        "expected": "insufficient_overlap",
+    },
+    {
+        "name": "unsupported percentage",
+        "question": "What percentage of Earth's atmosphere is oxygen?",
+        "answer": "Earth's atmosphere is 21% oxygen and 79% nitrogen.",
+        "evidence": {"title": "Earth's atmosphere", "excerpt": "Earth's atmosphere contains oxygen and nitrogen."},
+        "expected": "insufficient_overlap",
+    },
+    {
         "name": "right answer with extra wording",
         "question": "Which planet is largest in the Solar System?",
         "answer": "Jupiter is the largest planet in the Solar System.",
