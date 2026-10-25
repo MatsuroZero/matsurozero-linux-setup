@@ -708,12 +708,12 @@ def _add_temporary_fact(session, category, fact):
 def _extract_explicit_temporary_fact(session, user_text):
     """Fast path for clear first-person disclosures; no second model needed."""
     text = " ".join(str(user_text or "").split()).strip()
-    name = re.search(r"\\bmy name is\\s+([A-Za-z][A-Za-z'-]{1,30})\\b", text, flags=re.I)
+    name = re.search(r"\bmy name is\s+([A-Za-z][A-Za-z'-]{1,30})\b", text, flags=re.I)
     if name:
         return _add_temporary_fact(session, "identity", f"Matthew's name is {name.group(1).capitalize()}")
 
     favorite = re.search(
-        r"\\bmy\\s+(favorite|favourite)\\s+(anime|game|food|movie|show|book|song|artist)\\s+is\\s+(.+?)(?=[.!?](?:\\s|$)|$)",
+        r"\bmy\s+(favorite|favourite)\s+(anime|game|food|movie|show|book|song|artist)\s+is\s+(.+?)(?=[.!?](?:\s|$)|$)",
         text, flags=re.I,
     )
     if favorite:
@@ -1268,7 +1268,7 @@ async def ollama_remember_command(update: Update, context: ContextTypes.DEFAULT_
     if not fact:
         await update.effective_message.reply_text("Usage: /remember <detail> or /remember <category>: <detail>\\nCategories: identity, style, learning, projects, linux, gaming, creative, food")
         return
-    category_match = re.match(r"^(identity|style|learning|projects|linux|gaming|creative|food)\\s*:\\s*(.+)$", fact, flags=re.I)
+    category_match = re.match(r"^(identity|style|learning|projects|linux|gaming|creative|food)\s*:\s*(.+)$", fact, flags=re.I)
     if category_match:
         fact = f"{category_match.group(1).casefold()}: {category_match.group(2).strip()}"
     memory = _load_ollama_memory()
