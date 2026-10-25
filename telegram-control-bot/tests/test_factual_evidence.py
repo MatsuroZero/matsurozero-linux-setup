@@ -609,6 +609,34 @@ class EvidenceConflictDetectionTests(unittest.TestCase):
         self.assertEqual(len(conflicts), 1)
         self.assertEqual(conflicts[0]["reason"], "different numeric values")
 
+    def test_numeric_formatting_variants_are_not_reported_as_conflicts(self):
+        evidence = {
+            "title": "Example",
+            "excerpt": "The system processed 1,000 requests.",
+            "url": "https://en.wikipedia.org/?curid=123",
+            "additional_sources": [{
+                "title": "Example facts",
+                "excerpt": "The system processed 1000 requests.",
+                "url": "https://stackoverflow.com/a/123",
+                "source": "Stack Overflow answer",
+            }],
+        }
+        self.assertEqual(factual_evidence.detect_evidence_conflicts(evidence), [])
+
+    def test_digit_and_single_number_word_are_compared_consistently(self):
+        evidence = {
+            "title": "Planet X",
+            "excerpt": "Planet X has 12 moons and is a distant planet.",
+            "url": "https://en.wikipedia.org/?curid=123",
+            "additional_sources": [{
+                "title": "Planet X facts",
+                "excerpt": "Planet X has twelve moons and is a distant planet.",
+                "url": "https://stackoverflow.com/a/123",
+                "source": "Stack Overflow answer",
+            }],
+        }
+        self.assertEqual(factual_evidence.detect_evidence_conflicts(evidence), [])
+
     def test_similar_nonconflicting_sources_are_not_flagged(self):
         evidence = {
             "title": "Canberra",
