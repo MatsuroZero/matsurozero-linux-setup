@@ -241,6 +241,42 @@ class EvidenceFormattingTests(unittest.TestCase):
         )
         self.assertEqual(result["status"], "candidate_supported")
 
+    def test_equivalent_digit_formatting_is_not_flagged_as_unsupported(self):
+        evidence = {
+            "title": "Example",
+            "excerpt": "The system processed 1,000 requests.",
+        }
+        result = factual_evidence.assess_answer_support(
+            "How many requests did the system process?",
+            "The system processed 1000 requests.",
+            evidence,
+        )
+        self.assertEqual(result["status"], "candidate_supported")
+
+    def test_equivalent_decimal_and_integer_values_are_not_flagged(self):
+        evidence = {
+            "title": "Example",
+            "excerpt": "The measurement was 12.",
+        }
+        result = factual_evidence.assess_answer_support(
+            "What was the measurement?",
+            "The measurement was 12.0.",
+            evidence,
+        )
+        self.assertEqual(result["status"], "candidate_supported")
+
+    def test_number_word_and_digit_are_equivalent_in_support_check(self):
+        evidence = {
+            "title": "Planet X",
+            "excerpt": "Planet X has twelve moons and is a distant planet.",
+        }
+        result = factual_evidence.assess_answer_support(
+            "How many moons does Planet X have?",
+            "Planet X has 12 moons and is a distant planet.",
+            evidence,
+        )
+        self.assertEqual(result["status"], "candidate_supported")
+
     def test_empty_answer_is_unavailable(self):
         result = factual_evidence.assess_answer_support(
             "What is the capital of Australia?", "", {
