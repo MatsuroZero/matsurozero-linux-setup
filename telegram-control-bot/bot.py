@@ -1143,6 +1143,21 @@ def _safe_arithmetic_value(node):
     raise ValueError("unsupported arithmetic expression")
 
 
+def _is_standalone_arithmetic_question(user_text):
+    """True only when a message contains arithmetic and no other request."""
+    text = " ".join(str(user_text or "").split()).strip()
+    if not text or len(text) > 600:
+        return False
+    pattern = (
+        r"(?:(?:what(?:'s|s|\s+is)|calculate|compute|solve)\s+)?"
+        r"[\d\s()+*/%.^\-]+[?!.]*"
+    )
+    return bool(
+        re.fullmatch(pattern, text, flags=re.I)
+        and re.search(r"[+*/%^]|//|\d\s+-", text)
+    )
+
+
 def _answer_arithmetic_question(user_text):
     """Solve a plain arithmetic message or a math question appended to other text."""
     text = " ".join(str(user_text or "").split()).strip()
@@ -1164,9 +1179,14 @@ def _answer_arithmetic_question(user_text):
     if len(expression) > 500:
         return None
     try:
-        value = _safe_arithmetic_value(ast.parse(expression, mode="eval"))
+        tree = ast.parse(expression, mode="eval")
+        # Bound parser/evaluator work as well as input length. ast.parse alone is
+        # not a resource limit for hostile or accidentally enormous expressions.
+        if sum(1 for _ in ast.walk(tree)) > 64:
+            return None
+        value = _safe_arithmetic_value(tree)
         return str(value.numerator) if value.denominator == 1 else f"{value.numerator}/{value.denominator}"
-    except (SyntaxError, ValueError, ZeroDivisionError, OverflowError):
+    except (SyntaxError, ValueError, ZeroDivisionError, OverflowError, RecursionError, MemoryError):
         return None
 
 
@@ -1317,8 +1337,18 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     thinking_message = None
     try:
-        direct_answer = _answer_arithmetic_question(user_text)
-        if direct_answer is None:
+        arithmetic_result = _answer_arithmetic_question(user_text)
+        standalone_arithmetic = _is_standalone_arithmetic_question(user_text)
+        if arithmetic_result is not None and standalone_arithmetic:
+            session["history"] = (history + [{"role": "assistant", "content": arithmetic_result}])[-12:]
+            await message.reply_text(arithmetic_result)
+            return
+
+        # Do not let a fast path discard the non-math parts of a mixed message.
+        # Keep the verified result as a hard fact for the model, while it answers
+        # the user's other question/disclosure in the same turn.
+        direct_answer = None
+        if arithmetic_result is None:
             direct_answer = _answer_from_recent_disclosures(user_text, history[:-1])
         if direct_answer:
             session["history"] = (history + [{"role": "assistant", "content": direct_answer}])[-12:]
@@ -1336,6 +1366,14 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         # Do not start the secondary fact-extraction model before generating the
         # reply. On CPU-limited machines, concurrent Ollama requests compete for
         # the same cores and can make the user-facing response noticeably slower.
+        system_prompt = _ollama_system_prompt(user_text, session.get("temporary_facts", []))
+        if arithmetic_result is not None:
+            system_prompt += (
+                "\n\nVERIFIED CALCULATION: A deterministic arithmetic evaluator calculated "
+                f"the expression at the end of the user's message as {arithmetic_result}. "
+                "Include this exact result, and also answer every other part of the user's message. "
+                "Do not recalculate it or ignore the non-math content."
+            )
         async with httpx.AsyncClient(
             timeout=httpx.Timeout(OLLAMA_TIMEOUT, connect=5.0)
         ) as client:
@@ -1343,7 +1381,7 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
                 f"{OLLAMA_BASE_URL}/api/chat",
                 json={
                     "model": session["model"],
-                    "messages": [{"role": "system", "content": _ollama_system_prompt(user_text, session.get("temporary_facts", []))}] + history,
+                    "messages": [{"role": "system", "content": system_prompt}] + history,
                     "stream": False,
                     "keep_alive": "10m",
                     "think": False,
