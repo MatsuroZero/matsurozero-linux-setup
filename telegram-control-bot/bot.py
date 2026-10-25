@@ -1,4 +1,6 @@
 import asyncio
+import ast
+from fractions import Fraction
 import json
 import logging
 import httpx
@@ -735,6 +737,21 @@ def _extract_explicit_temporary_fact(session, user_text):
     if name:
         return _add_temporary_fact(session, "identity", f"Matthew's name is {name.group(1)}")
 
+
+    played = re.search(
+        r"\bI\s+(?:(?:really|personally)\s+)*(love|like|enjoy|prefer)\s+"
+        r"(?:playing|play)\s+(.+?)(?=\s*,\s*|\s+(?:what(?:'s|s| is)|why|how|when|where)\b|[.!?]|$)",
+        text, flags=re.I,
+    )
+    if played:
+        verb, subject = played.group(1).casefold(), played.group(2).strip(" .!?")
+        subject = re.sub(r"\s+", " ", subject)
+        if subject and len(subject) <= 100:
+            preferred_verb = {"love": "loves", "like": "likes", "enjoy": "enjoys", "prefer": "prefers"}[verb]
+            subject = re.sub(r"(?i)^miencraft\b", "Minecraft", subject)
+            _add_temporary_fact(session, "gaming", f"Matthew {preferred_verb} playing {subject}")
+            return True
+
     watched = re.search(
         r"\bI\s+(?:(?:personally|really)\s+)*(love|like|enjoy|prefer)\s+(?:watching|to watch)\s+"
         r"(.+?)(?=\s+(?:it's|its|it is|which is|because|since)\b|[.!?]|$)",
@@ -1081,6 +1098,80 @@ async def active_chat_callback(
 
 
 def _answer_from_recent_disclosures(user_text, prior_history):
+
+def _safe_arithmetic_value(node):
+    """Evaluate arithmetic AST nodes without eval() or arbitrary code execution."""
+    if isinstance(node, ast.Expression):
+        return _safe_arithmetic_value(node.body)
+    if isinstance(node, ast.Constant) and isinstance(node.value, int) and not isinstance(node.value, bool):
+        if node.value.bit_length() > 14000:
+            raise ValueError("number is too large")
+        return Fraction(node.value, 1)
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
+        value = _safe_arithmetic_value(node.operand)
+        return value if isinstance(node.op, ast.UAdd) else -value
+    if isinstance(node, ast.BinOp):
+        left = _safe_arithmetic_value(node.left)
+        right = _safe_arithmetic_value(node.right)
+        if isinstance(node.op, ast.Add):
+            result = left + right
+        elif isinstance(node.op, ast.Sub):
+            result = left - right
+        elif isinstance(node.op, ast.Mult):
+            result = left * right
+        elif isinstance(node.op, ast.Div):
+            if right == 0:
+                raise ZeroDivisionError("division by zero")
+            result = left / right
+        elif isinstance(node.op, ast.FloorDiv):
+            if right == 0:
+                raise ZeroDivisionError("division by zero")
+            result = Fraction(left // right, 1)
+        elif isinstance(node.op, ast.Mod):
+            if right == 0:
+                raise ZeroDivisionError("division by zero")
+            result = Fraction(left % right, 1)
+        elif isinstance(node.op, ast.Pow):
+            if right.denominator != 1 or abs(right.numerator) > 1000:
+                raise ValueError("exponent is outside the safe range")
+            if left == 0 and right.numerator < 0:
+                raise ZeroDivisionError("zero cannot have a negative exponent")
+            result = left ** right.numerator
+        else:
+            raise ValueError("unsupported operator")
+        if result.numerator.bit_length() > 14000 or result.denominator.bit_length() > 14000:
+            raise ValueError("result is too large")
+        return result
+    raise ValueError("unsupported arithmetic expression")
+
+
+def _answer_arithmetic_question(user_text):
+    """Solve a plain arithmetic message or a math question appended to other text."""
+    text = " ".join(str(user_text or "").split()).strip()
+    if not text or len(text) > 600:
+        return None
+    match = re.search(
+        r"(?:what(?:'s|s|\s+is)\s+|calculate\s+|compute\s+|solve\s+)?"
+        r"([+-]?\d[\d\s]*(?:(?:\*\*|//|[+*/%^\-])\s*[+-]?\d[\d\s]*)+)"
+        r"(?:\s*[?!.]*)$",
+        text, flags=re.I,
+    )
+    if match:
+        expression = match.group(1)
+    else:
+        if not re.fullmatch(r"[\d\s()+*/%.^\-]+", text) or not re.search(r"[+*/%^]|//|\d\s+-", text):
+            return None
+        expression = text
+    expression = expression.strip().replace("^", "**")
+    if len(expression) > 500:
+        return None
+    try:
+        value = _safe_arithmetic_value(ast.parse(expression, mode="eval"))
+        return str(value.numerator) if value.denominator == 1 else f"{value.numerator}/{value.denominator}"
+    except (SyntaxError, ValueError, ZeroDivisionError, OverflowError):
+        return None
+
+
     """Answer simple recall questions from explicit recent user statements, without guessing."""
     query = " ".join(str(user_text or "").casefold().split())
     if not isinstance(prior_history, list):
@@ -1102,6 +1193,21 @@ def _answer_from_recent_disclosures(user_text, prior_history):
                     return f"You said {game} is your favorite game."
 
     if re.search(r"\bwhat\s+(?:show|series|tv show)s?\b|\bwhat\s+show\s+did\s+i\s+tell\s+you\b", query):
+    if re.search(r"\bwhat\s+game\s+do\s+i\s+(?:love|like|enjoy)\s+playing\b|\bwhat\s+game\s+did\s+i\s+say\s+i\s+play\b", query):
+        for item in reversed(prior_history):
+            if not isinstance(item, dict) or item.get("role") != "user":
+                continue
+            content = str(item.get("content", ""))
+            match = re.search(
+                r"\bI\s+(?:really\s+|personally\s+)*(?:love|like|enjoy|prefer)\s+(?:playing|play)\s+"
+                r"(.+?)(?=\s*,\s*|\s+(?:what(?:'s|s| is)|why|how|when|where)\b|[.!?]|$)",
+                content, flags=re.I,
+            )
+            if match:
+                game = re.sub(r"(?i)^miencraft\b", "Minecraft", match.group(1).strip(" .!?"))
+                if game:
+                    return f"You said you love playing {game}."
+
         for item in reversed(prior_history):
             if not isinstance(item, dict) or item.get("role") != "user":
                 continue
@@ -1211,7 +1317,9 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     thinking_message = None
     try:
-        direct_answer = _answer_from_recent_disclosures(user_text, history[:-1])
+        direct_answer = _answer_arithmetic_question(user_text)
+        if direct_answer is None:
+            direct_answer = _answer_from_recent_disclosures(user_text, history[:-1])
         if direct_answer:
             session["history"] = (history + [{"role": "assistant", "content": direct_answer}])[-12:]
             await message.reply_text(direct_answer)
