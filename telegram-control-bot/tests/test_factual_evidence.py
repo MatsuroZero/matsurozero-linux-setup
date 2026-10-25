@@ -508,3 +508,34 @@ class StackOverflowAnswerRetrievalTests(unittest.IsolatedAsyncioTestCase):
                 "How do I use Python?"
             )
         self.assertEqual(results, [])
+
+
+class TimeSensitiveQuestionTests(unittest.TestCase):
+    def test_current_factual_questions_require_live_evidence_or_abstention(self):
+        for question in (
+            "Who is the current president of France?",
+            "What is the latest news today?",
+            "What is the weather right now?",
+            "What is the current exchange rate?",
+        ):
+            with self.subTest(question=question):
+                self.assertTrue(
+                    factual_evidence.is_time_sensitive_question(question)
+                )
+
+    def test_personal_or_creative_questions_are_not_misclassified_as_current_facts(self):
+        for question in (
+            "What do you currently remember about me?",
+            "Write a story about a current of magic flowing through a city.",
+            "Recommend a game for me today.",
+        ):
+            with self.subTest(question=question):
+                self.assertFalse(
+                    factual_evidence.is_time_sensitive_question(question)
+                )
+
+    def test_unavailable_live_evidence_prompt_forbids_confident_guessing(self):
+        prompt = factual_evidence.format_time_sensitive_unavailable_prompt()
+        self.assertIn("No current source was retrieved", prompt)
+        self.assertIn("Do not answer from training memory", prompt)
+        self.assertIn("Do not fabricate citations", prompt)
