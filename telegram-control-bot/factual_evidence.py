@@ -4,6 +4,7 @@ This module retrieves a bounded Wikipedia article extract for grounding. It does
 not prove a claim true: callers must treat results as candidate evidence and allow
 the model to abstain when the extract does not answer the question.
 """
+import asyncio
 import html
 import re
 from urllib.parse import urlparse
@@ -300,3 +301,77 @@ def format_support_warning():
         "\n\n⚠️ I found a possible reference, but the answer did not clearly match "
         "the retrieved extract. Please treat the answer as unverified."
     )
+
+
+async def retrieve_stackexchange_evidence(question):
+    """Search Stack Overflow for relevant technical questions; return at most two results."""
+    if not should_retrieve_factual_evidence(question):
+        return []
+    lowered = str(question or "").casefold()
+    technical_terms = (
+        "python", "linux", "programming", "code", "api", "http", "html", "css",
+        "javascript", "typescript", "sql", "database", "exception", "error",
+        "debug", "compiler", "function", "class", "git", "bash", "shell",
+        "telegram bot", "ollama", "algorithm", "regex", "library", "package",
+    )
+    if not any(term in lowered for term in technical_terms):
+        return []
+    try:
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(REQUEST_TIMEOUT_SECONDS, connect=1.5),
+            headers={"User-Agent": "TelegramControlBot/1.0 (local factual grounding)"},
+            follow_redirects=True,
+        ) as client:
+            response = await client.get(
+                "https://api.stackexchange.com/2.3/search/advanced",
+                params={
+                    "order": "desc", "sort": "relevance",
+                    "q": " ".join(str(question).split())[:MAX_QUESTION_CHARS],
+                    "site": "stackoverflow", "pagesize": 2, "filter": "withbody",
+                },
+            )
+            response.raise_for_status()
+            payload = response.json()
+        items = payload.get("items", [])
+        if not isinstance(items, list):
+            return []
+        results = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            link = str(item.get("link") or "").strip()
+            parsed = urlparse(link)
+            title = _clean_excerpt(item.get("title", ""))
+            excerpt = _clean_excerpt(item.get("body", ""))
+            if title and excerpt and parsed.scheme == "https" and parsed.hostname == "stackoverflow.com":
+                results.append({
+                    "title": title, "excerpt": excerpt[:800], "url": link,
+                    "source": "Stack Overflow thread",
+                })
+        return results
+    except (httpx.HTTPError, ValueError, TypeError, KeyError):
+        return []
+
+
+async def retrieve_multi_source_evidence(question):
+    """Fetch relevant evidence sources concurrently; failures never break chat."""
+    if not should_retrieve_factual_evidence(question):
+        return None
+    wikipedia, technical = await asyncio.gather(
+        retrieve_wikipedia_evidence(question),
+        retrieve_stackexchange_evidence(question),
+        return_exceptions=True,
+    )
+    if isinstance(wikipedia, BaseException):
+        wikipedia = None
+    if isinstance(technical, BaseException):
+        technical = []
+    sources = ([wikipedia] if isinstance(wikipedia, dict) else [])
+    if isinstance(technical, list):
+        sources.extend(item for item in technical if isinstance(item, dict))
+    if not sources:
+        return None
+    primary = dict(sources[0])
+    primary["additional_sources"] = sources[1:3]
+    return primary
+
