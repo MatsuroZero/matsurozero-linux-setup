@@ -15,7 +15,7 @@ import psutil
 from dotenv import load_dotenv
 from telegram import BotCommand, Update
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.error import BadRequest
+from telegram.error import BadRequest, TelegramError
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
@@ -23,6 +23,7 @@ from telegram.ext import (
     ContextTypes,
     ConversationHandler,
     MessageHandler,
+    ApplicationHandlerStop,
     filters,
 )
 
@@ -673,16 +674,23 @@ class ActiveOllamaChatFilter(filters.MessageFilter):
         return bool(user and (message.chat.id, user.id) in CHAT_SESSIONS)
 
 
-def _active_chat_callback_pattern(query):
-    return bool(
-        query and query.message
-        and (query.message.chat.id, query.from_user.id) in CHAT_SESSIONS
-    )
-
-
-async def active_chat_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def active_chat_callback(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
     query = update.callback_query
-    await query.answer("End chat with /bye to use the control menu.", show_alert=True)
+    if not query or not query.message:
+        return
+
+    key = (query.message.chat.id, query.from_user.id)
+    if key not in CHAT_SESSIONS:
+        return
+
+    await query.answer(
+        "End chat with /bye to use the control menu.",
+        show_alert=True,
+    )
+    raise ApplicationHandlerStop
 
 
 async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -731,7 +739,16 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
     # Keep a short rolling transcript for an 8 GB host.
     history = history[-12:]
 
+    thinking_message = None
     try:
+        try:
+            thinking_message = await message.reply_text(
+                "> _Thinking…_",
+                parse_mode="MarkdownV2",
+            )
+        except TelegramError:
+            log.warning("Could not send Ollama thinking indicator", exc_info=True)
+
         async with httpx.AsyncClient(
             timeout=httpx.Timeout(OLLAMA_TIMEOUT, connect=5.0)
         ) as client:
@@ -751,6 +768,12 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             raise RuntimeError("Ollama returned no response text.")
         if CHAT_SESSIONS.get(key) is not session:
             return
+        if thinking_message is not None:
+            try:
+                await thinking_message.delete()
+            except TelegramError:
+                log.debug("Could not delete Ollama thinking indicator", exc_info=True)
+            thinking_message = None
         session["history"] = (history + [{"role": "assistant", "content": answer}])[-12:]
         for chunk in _split_telegram_text(answer):
             if CHAT_SESSIONS.get(key) is not session:
@@ -762,6 +785,11 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         if CHAT_SESSIONS.get(key) is session:
             await message.reply_text(f"⚠️ Ollama request failed: {str(exc)[:700]}")
     finally:
+        if thinking_message is not None:
+            try:
+                await thinking_message.delete()
+            except TelegramError:
+                log.debug("Could not clean up Ollama thinking indicator", exc_info=True)
         if CHAT_SESSIONS.get(key) is session:
             session["busy"] = False
             session["task"] = None
@@ -1754,9 +1782,10 @@ def main():
     app.add_handler(MessageHandler(
         ActiveOllamaChatFilter(), active_chat_message, block=False
     ))
-    app.add_handler(CallbackQueryHandler(
-        active_chat_callback, pattern=_active_chat_callback_pattern, block=False
-    ))
+    app.add_handler(
+        CallbackQueryHandler(active_chat_callback),
+        group=-1,
+    )
     app.add_handler(ConversationHandler(
         entry_points=[
             CallbackQueryHandler(reveal_credentials_start, pattern=r"^links:reveal$")
