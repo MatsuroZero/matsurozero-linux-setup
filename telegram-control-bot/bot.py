@@ -654,14 +654,6 @@ def _ollama_system_prompt(user_text="", temporary_facts=None):
                 "not you. Use them only when relevant and never claim them as your own:\n"
                 + "\n".join(lines)
             )
-    # Short, non-repetitive boundary: preserve the agreed persona without absorbing
-    # the human user's profile or repeatedly announcing the distinction.
-    parts.append(
-        "PERSONA AND CONTEXT: Your chat name is Itsuki; the human user is Matthew. "
-        "Keep the Itsuki-inspired voice naturally. The saved context describes Matthew, "
-        "not your biography. Do not repeat identity disclaimers unless the user asks or "
-        "there is a real ambiguity. Never claim Matthew's real-world experiences as yours."
-    )
     return "\n\n".join(parts)
 
 
@@ -682,11 +674,12 @@ async def _extract_temporary_facts(key, session, user_text):
         ):
             return
         disclosure_cues = (
-            "my name is ", "i'm ", "i am ", "i like ", "i love ", "i enjoy ",
-            "i prefer ", "i use ", "i have ", "i live ", "i study ", "i work ",
-            "i play ", "i want ", "i need ", "i dislike ", "i hate ", "i used to ",
+            "my name is ", "i like ", "i love ", "i enjoy ", "i prefer ",
+            "i use ", "i have ", "i live ", "i study ", "i work ", "i play ",
+            "i want ", "i need ", "i dislike ", "i hate ", "i used to ",
+            "i'm studying ", "i am studying ", "i'm learning ", "i am learning ",
             "my pc", "my phone", "my computer", "my project", "my favorite",
-            "my favourite", "i'm studying ", "i am studying ",
+            "my favourite", "my main interest is ", "i'm a ", "i am a ",
         )
         if not any(cue in lowered for cue in disclosure_cues):
             return
@@ -781,24 +774,21 @@ async def _extract_after_previous(previous_task, key, session, user_text):
 
 
 def _deduplicate_answer_text(text):
-    """Remove exact repeated sentences/paragraphs without another model call."""
+    """Remove exact repeated long lines while preserving bullets and paragraph layout."""
     text = str(text or "").strip()
     if not text:
         return text
     seen = set()
     kept = []
-    for part in re.split(r"(?<=[.!?])\s+|\n{2,}", text):
-        cleaned = part.strip()
-        normalized = re.sub(r"[^a-z0-9]+", " ", cleaned.casefold()).strip()
-        if not cleaned:
-            continue
-        # Avoid deleting short repeated words or intentional list items.
-        if len(normalized) >= 28 and normalized in seen:
-            continue
-        if len(normalized) >= 28:
+    for line in text.splitlines():
+        normalized = re.sub(r"[^a-z0-9]+", " ", line.casefold()).strip()
+        # Keep blank lines and short lines, since they often carry formatting.
+        if normalized and len(normalized) >= 28:
+            if normalized in seen:
+                continue
             seen.add(normalized)
-        kept.append(cleaned)
-    return " ".join(kept).strip()
+        kept.append(line)
+    return "\n".join(kept).strip()
 
 
 def _split_telegram_text(text, limit=3900):
