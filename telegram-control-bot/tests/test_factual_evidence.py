@@ -785,6 +785,24 @@ class ParaphraseNormalizationRegressionTests(unittest.TestCase):
         )
         self.assertEqual(result["status"], "candidate_supported")
 
+
+
+    def test_reversed_capital_relation_is_rejected_despite_full_word_overlap(self):
+        evidence = {
+            "title": "Canberra",
+            "excerpt": "Canberra is the capital city of Australia.",
+        }
+        result = factual_evidence.assess_claim_level_support(
+            "What is Australia's capital?",
+            "Australia is the capital city of Canberra.",
+            evidence,
+        )
+        self.assertEqual(result["status"], "insufficient_overlap")
+        self.assertEqual(
+            result["claims"][0].get("reason"),
+            "reversed_capital_relation",
+        )
+
     def test_paraphrase_normalization_does_not_accept_unrelated_claim(self):
         evidence = {
             "title": "Canberra",
