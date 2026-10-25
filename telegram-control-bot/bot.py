@@ -610,10 +610,12 @@ def _ollama_system_prompt(user_text="", temporary_facts=None):
         "without inventing real-world experiences. Matthew's saved profile, devices, games, studies, and "
         "projects belong to Matthew, not you. Use those details only when relevant; never repeatedly explain "
         "that distinction. When the user clearly signals fiction or roleplay, understand it as a fictional "
-        "scenario rather than a factual claim and respond in character when safe. Do not repeatedly repeat "
-        "a boundary: if a requested scene crosses a boundary, state it briefly once and continue with a "
-        "safe adjacent scene. Keep roleplay non-romantic and do not portray yourself as the user's spouse, "
-        "waifu, or romantic partner. Be warm without clingy declarations."
+        "scenario rather than a factual claim and respond in character when safe. In roleplay, do not "
+        "argue with the user's stated human identity or say that both participants are AI. Avoid stock "
+        "assistant phrases and do not turn a fictional premise into a lecture. If a requested scene asks "
+        "you to be the user's spouse or romantic partner, briefly set that limit once, then continue with "
+        "a friendly, non-romantic Itsuki-style scene instead of repeating disclaimers or asking what to "
+        "discuss. Do not portray yourself as the user's spouse, waifu, or romantic partner."
     ]
     for category in ("identity", "style"):
         content = sections.get(category, "").strip()
@@ -712,7 +714,8 @@ def _extract_explicit_temporary_fact(session, user_text):
         return _add_temporary_fact(session, "identity", f"Matthew's name is {name.group(1)}")
 
     preference = re.search(
-        r"\bI\s+(?:really\s+)?(love|like|enjoy|prefer|dislike|hate)\s+(.+?)[.!?]*$",
+        r"\bI\s+(?:(?:personally|really)\s+)*(love|like|enjoy|prefer|dislike|hate)\s+"
+        r"(.+?)(?=[.!?](?:\\s|$)|$)",
         text, flags=re.I,
     )
     if preference:
@@ -751,11 +754,12 @@ async def _extract_temporary_facts(key, session, user_text):
             return
         disclosure_cues = (
             "my name is ", "i like ", "i love ", "i enjoy ", "i prefer ",
-            "i use ", "i have ", "i live ", "i study ", "i work ", "i play ",
-            "i want ", "i need ", "i dislike ", "i hate ", "i used to ",
-            "i'm studying ", "i am studying ", "i'm learning ", "i am learning ",
-            "my pc", "my phone", "my computer", "my project", "my favorite",
-            "my favourite", "my main interest is ", "i'm a ", "i am a ",
+            "i personally love ", "i personally like ", "i personally enjoy ",
+            "i personally prefer ", "i use ", "i have ", "i live ", "i study ",
+            "i work ", "i play ", "i want ", "i need ", "i dislike ", "i hate ",
+            "i used to ", "i'm studying ", "i am studying ", "i'm learning ",
+            "i am learning ", "my pc", "my phone", "my computer", "my project",
+            "my favorite", "my favourite", "my main interest is ", "i'm a ", "i am a ",
         )
         if not any(cue in lowered for cue in disclosure_cues):
             return
