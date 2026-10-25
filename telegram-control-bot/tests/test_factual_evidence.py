@@ -970,6 +970,37 @@ class NumericFalsePositiveTests(unittest.TestCase):
             factual_evidence._normalized_numeric_values("Planet X has 21 moons."),
         )
 
+class SentenceLocalPolarityTests(unittest.TestCase):
+    def test_unrelated_negation_does_not_validate_claim_polarity(self):
+        evidence = {
+            "title": "Australian capitals",
+            "excerpt": (
+                "Canberra is the capital city of Australia. "
+                "Sydney is not the capital city of Australia."
+            ),
+        }
+        result = factual_evidence.assess_answer_support(
+            "What is the capital of Australia?",
+            "Canberra is not the capital city of Australia.",
+            evidence,
+        )
+        self.assertEqual(result["status"], "insufficient_overlap")
+        self.assertEqual(result.get("reason"), "polarity_mismatch")
+
+    def test_matching_negative_sentence_still_rejects_opposite_claim(self):
+        evidence = {
+            "title": "Australian capitals",
+            "excerpt": "Sydney is not the capital city of Australia.",
+        }
+        result = factual_evidence.assess_answer_support(
+            "What is the capital of Australia?",
+            "Sydney is the capital city of Australia.",
+            evidence,
+        )
+        self.assertEqual(result["status"], "insufficient_overlap")
+        self.assertEqual(result.get("reason"), "polarity_mismatch")
+
+
 class CausalRelationGuardTests(unittest.TestCase):
     def test_shared_topic_words_do_not_support_added_causal_link(self):
         evidence = {
