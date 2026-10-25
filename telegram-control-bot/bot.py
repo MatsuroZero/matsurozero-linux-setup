@@ -1420,6 +1420,7 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
                 "Include this exact result, and also answer every other part of the user's message. "
                 "Do not recalculate it or ignore the non-math content."
             )
+        generation_started = time.perf_counter()
         async with httpx.AsyncClient(
             timeout=httpx.Timeout(OLLAMA_TIMEOUT, connect=5.0)
         ) as client:
@@ -1444,6 +1445,7 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             )
             response.raise_for_status()
             payload = response.json()
+        log.debug('Ollama generation stage took %.3fs', time.perf_counter() - generation_started)
         answer = payload.get("message", {}).get("content", "").strip()
         if not answer:
             raise RuntimeError("Ollama returned no response text.")
