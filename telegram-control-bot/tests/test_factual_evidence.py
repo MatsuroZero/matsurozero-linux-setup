@@ -711,3 +711,46 @@ class EvidenceCacheTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(retrieve.await_count, 2)
         finally:
             factual_evidence.EVIDENCE_CACHE_TTL_SECONDS = 180.0
+
+
+class ClaimLevelSupportTests(unittest.TestCase):
+    def test_supported_sentence_does_not_hide_unsupported_second_sentence(self):
+        evidence = {
+            "title": "Canberra",
+            "excerpt": "Canberra is the capital city of Australia.",
+        }
+        result = factual_evidence.assess_claim_level_support(
+            "What is the capital of Australia?",
+            "Canberra is Australia's capital. It has excellent nightlife.",
+            evidence,
+        )
+        self.assertEqual(result["status"], "insufficient_overlap")
+        self.assertEqual(len(result["claims"]), 2)
+        self.assertEqual(result["unsupported_claims"], ["It has excellent nightlife."])
+
+    def test_all_supported_sentences_can_pass(self):
+        evidence = {
+            "title": "Canberra",
+            "excerpt": "Canberra is the capital city of Australia. Canberra is located in the Australian Capital Territory.",
+        }
+        result = factual_evidence.assess_claim_level_support(
+            "What is Canberra?",
+            "Canberra is the capital city of Australia. Canberra is located in the Australian Capital Territory.",
+            evidence,
+        )
+        self.assertEqual(result["status"], "candidate_supported")
+        self.assertEqual(result["unsupported_claims"], [])
+
+    def test_bullet_list_is_checked_as_separate_claims(self):
+        evidence = {
+            "title": "Jupiter",
+            "excerpt": "Jupiter is the largest planet in the Solar System.",
+        }
+        result = factual_evidence.assess_claim_level_support(
+            "Which planet is largest?",
+            "- Jupiter is the largest planet in the Solar System.\\n- Jupiter has 80 moons.",
+            evidence,
+        )
+        self.assertEqual(result["status"], "insufficient_overlap")
+        self.assertEqual(len(result["claims"]), 2)
+        self.assertEqual(len(result["unsupported_claims"]), 1)
