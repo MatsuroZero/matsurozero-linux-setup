@@ -659,7 +659,7 @@ def detect_evidence_conflicts(evidence):
                     polarity_differs = bool(negation.search(left_sentence)) != bool(negation.search(right_sentence))
                     left_numbers = numeric_values(left_sentence)
                     right_numbers = numeric_values(right_sentence)
-                    numeric_disagreement = bool(left_numbers and right_numbers and left_numbers.isdisjoint(right_numbers))
+                    numeric_disagreement = bool(left_numbers and right_numbers and left_numbers != right_numbers)
                     if polarity_differs or numeric_disagreement:
                         conflict = {
                             "sources": [left.get("title", "Source 1"), right.get("title", "Source 2")],
