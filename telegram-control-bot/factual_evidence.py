@@ -21,6 +21,10 @@ def should_retrieve_factual_evidence(question):
         return False
 
     lowered = text.casefold()
+    # Never transmit user-specific questions or personal memory to an external source.
+    if re.search(r"\\b(?:my|me|i|mine|our|we|you|your|yours)\\b", lowered):
+        return False
+
     # These tasks are better handled by local deterministic logic, memory, or
     # ordinary conversation. Don't send personal details to an external service.
     excluded = (
