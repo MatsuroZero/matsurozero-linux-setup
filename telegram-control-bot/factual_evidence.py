@@ -315,7 +315,7 @@ def format_support_warning():
 
 
 async def retrieve_stackexchange_evidence(question):
-    """Search Stack Overflow for relevant technical questions; return at most two results."""
+    """Retrieve up to two Stack Overflow answers, preferring accepted answers."""
     if not should_retrieve_factual_evidence(question):
         return []
     lowered = str(question or "").casefold()
@@ -333,36 +333,85 @@ async def retrieve_stackexchange_evidence(question):
             headers={"User-Agent": "TelegramControlBot/1.0 (local factual grounding)"},
             follow_redirects=True,
         ) as client:
-            response = await client.get(
+            search_response = await client.get(
                 "https://api.stackexchange.com/2.3/search/advanced",
                 params={
                     "order": "desc", "sort": "relevance",
                     "q": " ".join(str(question).split())[:MAX_QUESTION_CHARS],
-                    "site": "stackoverflow", "pagesize": 2, "filter": "withbody",
+                    "site": "stackoverflow", "pagesize": 3,
+                    "filter": "default",
                 },
             )
-            response.raise_for_status()
-            payload = response.json()
-        items = payload.get("items", [])
-        if not isinstance(items, list):
-            return []
-        results = []
-        for item in items:
-            if not isinstance(item, dict):
-                continue
-            link = str(item.get("link") or "").strip()
-            parsed = urlparse(link)
-            title = _clean_excerpt(item.get("title", ""))
-            excerpt = _clean_excerpt(item.get("body", ""))
-            if title and excerpt and parsed.scheme == "https" and parsed.hostname == "stackoverflow.com":
-                results.append({
-                    "title": title, "excerpt": excerpt[:800], "url": link,
-                    "source": "Stack Overflow thread",
-                })
-        return results
-    except (httpx.HTTPError, ValueError, TypeError, KeyError):
-        return []
+            search_response.raise_for_status()
+            search_payload = search_response.json()
+            questions = search_payload.get("items", [])
+            if not isinstance(questions, list):
+                return []
 
+            question_rows = [
+                item for item in questions
+                if isinstance(item, dict)
+                and isinstance(item.get("question_id"), int)
+                and item.get("question_id", 0) > 0
+            ][:3]
+            if not question_rows:
+                return []
+
+            question_ids = ";".join(str(item["question_id"]) for item in question_rows)
+            answers_response = await client.get(
+                "https://api.stackexchange.com/2.3/questions/" + question_ids + "/answers",
+                params={
+                    "order": "desc", "sort": "votes",
+                    "site": "stackoverflow", "pagesize": 10,
+                    "filter": "withbody",
+                },
+            )
+            answers_response.raise_for_status()
+            answers_payload = answers_response.json()
+
+        answers = answers_payload.get("items", [])
+        if not isinstance(answers, list):
+            return []
+        question_by_id = {item["question_id"]: item for item in question_rows}
+        accepted_ids = {
+            item.get("accepted_answer_id") for item in question_rows
+            if isinstance(item.get("accepted_answer_id"), int)
+        }
+        # Prefer accepted answers, then higher-voted answers. API order is not
+        # assumed to place accepted answers first.
+        answers.sort(key=lambda item: (
+            item.get("answer_id") not in accepted_ids,
+            -(item.get("score") if isinstance(item.get("score"), int) else 0),
+        ))
+        results = []
+        seen_questions = set()
+        for answer in answers:
+            if not isinstance(answer, dict):
+                continue
+            question_id = answer.get("question_id")
+            answer_id = answer.get("answer_id")
+            if question_id not in question_by_id or not isinstance(answer_id, int):
+                continue
+            if question_id in seen_questions:
+                continue
+            question = question_by_id[question_id]
+            title = _clean_excerpt(question.get("title", ""))
+            excerpt = _clean_excerpt(answer.get("body", ""))[:800]
+            if not title or not excerpt:
+                continue
+            is_accepted = answer_id == question.get("accepted_answer_id")
+            results.append({
+                "title": title + (" (accepted answer)" if is_accepted else " (community answer)"),
+                "excerpt": excerpt,
+                "url": "https://stackoverflow.com/a/" + str(answer_id),
+                "source": "Stack Overflow accepted answer" if is_accepted else "Stack Overflow answer",
+            })
+            seen_questions.add(question_id)
+            if len(results) >= 2:
+                break
+        return results
+    except (httpx.HTTPError, ValueError, TypeError, KeyError, AttributeError):
+        return []
 
 async def retrieve_multi_source_evidence(question):
     """Fetch relevant evidence sources concurrently; failures never break chat."""
