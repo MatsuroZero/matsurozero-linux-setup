@@ -1266,7 +1266,7 @@ async def ollama_remember_command(update: Update, context: ContextTypes.DEFAULT_
         return
     fact = " ".join(context.args).strip()
     if not fact:
-        await update.effective_message.reply_text("Usage: /remember <detail> or /remember <category>: <detail>\\nCategories: identity, style, learning, projects, linux, gaming, creative, food")
+        await update.effective_message.reply_text("Usage: /remember <detail> or /remember <category>: <detail>\nCategories: identity, style, learning, projects, linux, gaming, creative, food")
         return
     category_match = re.match(r"^(identity|style|learning|projects|linux|gaming|creative|food)\s*:\s*(.+)$", fact, flags=re.I)
     if category_match:
