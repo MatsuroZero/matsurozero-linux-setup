@@ -145,13 +145,13 @@ def grade(case_id, response):
     elif case_id == "missing-detail-abstention":
         ok = any(phrase in lower for phrase in ("not provided", "not specified", "does not say", "doesn't say", "does not provide", "does not include", "context only states", "cannot determine", "can't determine", "unknown", "no information", "not enough information"))
     elif case_id == "evidence-grounded-capital":
-        ok = bool(re.search(r"\\bcanberra\\b", lower))
+        ok = "canberra" in lower
     elif case_id == "evidence-abstain":
         abstains = any(phrase in lower for phrase in ("cannot determine", "can't determine", "not specified", "not stated", "not provided", "insufficient information", "does not say"))
-        ok = abstains and not bool(re.search(r"\\b\\d[\\d,]*(?:\\.\\d+)?\\b", lower))
+        ok = abstains and not any(char.isdigit() for char in lower)
     elif case_id == "evidence-contradiction":
-        denies = bool(re.search(r"\\b(no|not|incorrect|isn't|is not)\\b", lower))
-        ok = denies and bool(re.search(r"\\bcanberra\\b", lower))
+        denies = any(phrase in lower for phrase in ("no, ", "not the capital", "incorrect", "is not the capital", "isn't the capital"))
+        ok = denies and "canberra" in lower
     elif case_id == "concise-definition":
         ok = any(term in lower for term in ("interface", "rules and tools", "set of rules", "standardized protocols")) and any(term in lower for term in ("software", "program", "application", "systems", "communicate", "components"))
     else:
