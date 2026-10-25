@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nexus-control"
+version = "0.2.0"
+description = "Local control center for a CachyOS system"
+requires-python = ">=3.11"
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.scripts]
+nexus = "nexus_control.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

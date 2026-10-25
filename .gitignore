@@ -1,0 +1,28 @@
+# Environment files and secrets
+.env
+.env.*
+**/.env
+**/.env.*
+
+# Databases and runtime data
+*.db
+*.sqlite
+*.sqlite3
+data/
+cache/
+caches/
+
+# Build outputs and dependencies
+build/
+dist/
+node_modules/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# Local credentials
+*.pem
+*.key
+id_rsa
+id_ed25519

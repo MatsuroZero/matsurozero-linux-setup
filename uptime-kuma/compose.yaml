@@ -1,0 +1,27 @@
+services:
+  uptime-kuma:
+    image: louislam/uptime-kuma:2
+    container_name: uptime-kuma
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./data:/app/data
+    environment:
+      TZ: Africa/Cairo
+    networks:
+      - odysseus
+      - localnexus
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  odysseus:
+    name: odysseus_default
+    external: true
+  localnexus:
+    name: localnexus_default
+    external: true
