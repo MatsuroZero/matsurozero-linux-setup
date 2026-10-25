@@ -544,7 +544,7 @@ def _text_categories(text):
     categories = set()
     for category, words in MEMORY_CATEGORIES.items():
         for word in words:
-            pattern = r"(?<!\\w)" + re.escape(word.casefold()) + r"(?!\\w)"
+            pattern = r"(?<!\w)" + re.escape(word.casefold()) + r"(?!\w)"
             if re.search(pattern, lowered):
                 categories.add(category)
                 break
