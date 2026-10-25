@@ -938,3 +938,26 @@ class CompoundNumberNormalizationTests(unittest.TestCase):
         }
         self.assertEqual(factual_evidence.detect_evidence_conflicts(evidence), [])
 
+class NumericFalsePositiveTests(unittest.TestCase):
+    def test_ordinary_phrase_one_of_does_not_create_unsupported_number(self):
+        evidence = {
+            "title": "Canberra",
+            "excerpt": "Canberra is the capital city of Australia and one of its largest cities.",
+        }
+        result = factual_evidence.assess_answer_support(
+            "What is Canberra?",
+            "Canberra is one of the capital cities of Australia.",
+            evidence,
+        )
+        self.assertEqual(result["status"], "candidate_supported")
+        self.assertEqual(result.get("unsupported_numbers", []), [])
+
+    def test_written_number_followed_by_countable_noun_is_checked(self):
+        evidence = {"title": "Planet X", "excerpt": "Planet X has 21 moons."}
+        result = factual_evidence.assess_answer_support(
+            "How many moons does Planet X have?",
+            "Planet X has twenty one moons.",
+            evidence,
+        )
+        self.assertEqual(result["status"], "candidate_supported")
+
