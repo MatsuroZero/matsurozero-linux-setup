@@ -539,3 +539,54 @@ class TimeSensitiveQuestionTests(unittest.TestCase):
         self.assertIn("No current source was retrieved", prompt)
         self.assertIn("Do not answer from training memory", prompt)
         self.assertIn("Do not fabricate citations", prompt)
+
+
+class EvidenceConflictDetectionTests(unittest.TestCase):
+    def test_opposing_polarity_between_sources_is_flagged_in_prompt(self):
+        evidence = {
+            "title": "Canberra",
+            "excerpt": "Canberra is the capital city of Australia.",
+            "url": "https://en.wikipedia.org/?curid=123",
+            "additional_sources": [{
+                "title": "Australia capital",
+                "excerpt": "Canberra is not the capital city of Australia.",
+                "url": "https://stackoverflow.com/a/123",
+                "source": "Stack Overflow answer",
+            }],
+        }
+        conflicts = factual_evidence.detect_evidence_conflicts(evidence)
+        self.assertEqual(len(conflicts), 1)
+        self.assertEqual(conflicts[0]["reason"], "opposing polarity")
+        prompt = factual_evidence.format_multi_source_evidence_for_prompt(evidence)
+        self.assertIn("POSSIBLE SOURCE CONFLICTS DETECTED", prompt)
+        self.assertIn("Do not silently choose one", prompt)
+
+    def test_numeric_disagreement_between_sources_is_flagged(self):
+        evidence = {
+            "title": "Planet X",
+            "excerpt": "Planet X has 12 moons and is a distant planet.",
+            "url": "https://en.wikipedia.org/?curid=123",
+            "additional_sources": [{
+                "title": "Planet X facts",
+                "excerpt": "Planet X has 14 moons and is a distant planet.",
+                "url": "https://stackoverflow.com/a/123",
+                "source": "Stack Overflow answer",
+            }],
+        }
+        conflicts = factual_evidence.detect_evidence_conflicts(evidence)
+        self.assertEqual(len(conflicts), 1)
+        self.assertEqual(conflicts[0]["reason"], "different numeric values")
+
+    def test_similar_nonconflicting_sources_are_not_flagged(self):
+        evidence = {
+            "title": "Canberra",
+            "excerpt": "Canberra is the capital city of Australia.",
+            "url": "https://en.wikipedia.org/?curid=123",
+            "additional_sources": [{
+                "title": "Canberra facts",
+                "excerpt": "Canberra is Australia's capital city.",
+                "url": "https://stackoverflow.com/a/123",
+                "source": "Stack Overflow answer",
+            }],
+        }
+        self.assertEqual(factual_evidence.detect_evidence_conflicts(evidence), [])
