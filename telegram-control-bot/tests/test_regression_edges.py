@@ -53,6 +53,22 @@ class MemoryEdgeCaseTests(unittest.TestCase):
         categories = bot._text_categories("Show me how the project works.")
         self.assertNotIn("creative", categories)
 
+    def test_new_favorite_replaces_old_favorite_of_same_type(self):
+        bot._add_temporary_fact(self.session, "gaming", "Matthew's favorite game is Minecraft")
+        bot._add_temporary_fact(self.session, "gaming", "Matthew's favorite game is Terraria")
+        facts = self.session["temporary_facts"]
+        self.assertEqual(len(facts), 1)
+        self.assertEqual(facts[0]["fact"], "Matthew's favorite game is Terraria")
+
+    def test_favorite_game_update_preserves_unrelated_facts(self):
+        bot._add_temporary_fact(self.session, "food", "Matthew's favorite food is pizza")
+        bot._add_temporary_fact(self.session, "gaming", "Matthew's favorite game is Minecraft")
+        bot._add_temporary_fact(self.session, "gaming", "Matthew's favorite game is Terraria")
+        facts = [item["fact"] for item in self.session["temporary_facts"]]
+        self.assertEqual(len(facts), 2)
+        self.assertIn("Matthew's favorite food is pizza", facts)
+        self.assertIn("Matthew's favorite game is Terraria", facts)
+
     def test_caps_temporary_facts_at_twenty(self):
         for index in range(25):
             self.assertTrue(
