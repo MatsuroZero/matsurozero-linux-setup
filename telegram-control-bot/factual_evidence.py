@@ -178,7 +178,9 @@ def _content_tokens(text):
         "can", "its", "his", "her", "she", "him", "has", "had", "how", "who",
         "why", "all", "any", "our", "out", "one", "two", "use", "used", "using",
         "per", "each", "make", "made", "does", "did", "get", "got", "like",
-        "known", "called", "often", "typically", "generally",
+        "known", "called", "often", "typically", "generally", "is", "a", "an",
+        "of", "to", "in", "on", "at", "by", "as", "it", "be", "do", "if",
+        "or", "so", "up", "no", "yes", "not", "he", "we", "i", "me", "my",
     }
     return {
         token.casefold()
