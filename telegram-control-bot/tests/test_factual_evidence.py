@@ -289,6 +289,36 @@ class EvidenceFormattingTests(unittest.TestCase):
         )
         self.assertEqual(result["status"], "candidate_supported")
 
+    def test_claim_level_check_splits_multiple_sentences_in_one_paragraph(self):
+        evidence = {
+            "title": "Canberra",
+            "excerpt": "Canberra is the capital city of Australia.",
+        }
+        result = factual_evidence.assess_claim_level_support(
+            "What is the capital of Australia?",
+            "Canberra is the capital of Australia. The city was founded in 1824.",
+            evidence,
+        )
+        self.assertEqual(result["status"], "insufficient_overlap")
+        self.assertEqual(len(result["claims"]), 2)
+        self.assertEqual(
+            result["unsupported_claims"],
+            ["The city was founded in 1824."],
+        )
+
+    def test_claim_level_check_checks_each_bullet_independently(self):
+        evidence = {
+            "title": "Water",
+            "excerpt": "Water boils at 100 °C at standard atmospheric pressure.",
+        }
+        result = factual_evidence.assess_claim_level_support(
+            "At what temperature does water boil?",
+            "- Water boils at 100 °C.\n- Water boils at 500 °C.",
+            evidence,
+        )
+        self.assertEqual(result["status"], "insufficient_overlap")
+        self.assertEqual(result["unsupported_claims"], ["Water boils at 500 °C."])
+
     def test_empty_answer_is_unavailable(self):
         result = factual_evidence.assess_answer_support(
             "What is the capital of Australia?", "", {
