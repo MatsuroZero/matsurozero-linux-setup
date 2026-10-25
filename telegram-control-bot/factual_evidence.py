@@ -190,22 +190,30 @@ def _content_tokens(text):
 
 
 def _unsupported_capitalized_terms(answer, evidence_text):
-    """Find capitalized answer terms absent from the candidate evidence.
+    """Flag likely added proper names absent from candidate evidence.
 
-    This conservative check is only a warning heuristic. It ignores common
-    sentence starters to reduce false alarms, and it does not recognize every
-    named entity or establish that a matching name is factually correct.
+    This is a conservative lexical warning, not named-entity recognition or
+    proof that a claim is false.
     """
     common_starters = {
         "the", "this", "that", "these", "those", "there", "here", "however",
         "also", "according", "because", "when", "while", "although", "yes", "no",
     }
-    evidence_terms = {term.casefold() for term in re.findall(r"\\b[A-Z][a-z]{2,}\\b", evidence_text)}
+
+    def capitalized_words(text):
+        found = set()
+        for raw in str(text or "").split():
+            word = raw.strip(".,!?;:\"'()[]{}")
+            if len(word) >= 3 and word[0].isupper() and word[1:].islower():
+                found.add(word.casefold())
+        return found
+
+    evidence_terms = capitalized_words(evidence_text)
     answer_terms = {
-        term for term in re.findall(r"\\b[A-Z][a-z]{2,}\\b", str(answer or ""))
-        if term.casefold() not in common_starters
+        word for word in capitalized_words(answer)
+        if word not in common_starters
     }
-    return sorted(term for term in answer_terms if term.casefold() not in evidence_terms)
+    return sorted(answer_terms - evidence_terms)
 
 
 def assess_answer_support(question, answer, evidence):
