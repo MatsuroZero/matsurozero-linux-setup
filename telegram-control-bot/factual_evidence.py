@@ -446,7 +446,7 @@ def assess_answer_support(question, answer, evidence):
     )
     if causal_pattern.search(answer_text):
         causal_evidence_sentences = [
-            sentence for sentence in re.split(r"(?<=[.!?])\\s+", evidence_text)
+            sentence for sentence in re.split(r"(?<=[.!?])\s+", evidence_text)
             if causal_pattern.search(sentence)
         ]
         answer_causal_terms = _content_tokens(answer_text)
