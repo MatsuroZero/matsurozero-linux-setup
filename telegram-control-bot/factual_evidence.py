@@ -7,6 +7,7 @@ the model to abstain when the extract does not answer the question.
 import asyncio
 import copy
 import html
+import logging
 from collections import OrderedDict
 import re
 import time
@@ -22,6 +23,7 @@ EVIDENCE_CACHE_TTL_SECONDS = 180.0
 EVIDENCE_MISS_CACHE_TTL_SECONDS = 20.0
 EVIDENCE_CACHE_MAX_ENTRIES = 128
 _EVIDENCE_CACHE = OrderedDict()
+log = logging.getLogger(__name__)
 
 
 def should_retrieve_factual_evidence(question):
@@ -466,10 +468,13 @@ async def retrieve_multi_source_evidence(question):
     cached = _EVIDENCE_CACHE.get(cache_key)
     if cached and cached[0] > now:
         _EVIDENCE_CACHE.move_to_end(cache_key)
+        log.debug('Evidence cache hit')
         return copy.deepcopy(cached[1])
     if cached:
         del _EVIDENCE_CACHE[cache_key]
+    started = time.perf_counter()
     result = await _retrieve_multi_source_evidence_uncached(question)
+    log.debug('Evidence cache miss; retrieval took %.3fs; evidence=%s', time.perf_counter() - started, bool(result))
     ttl = EVIDENCE_CACHE_TTL_SECONDS if result else EVIDENCE_MISS_CACHE_TTL_SECONDS
     _EVIDENCE_CACHE[cache_key] = (now + ttl, copy.deepcopy(result))
     if len(_EVIDENCE_CACHE) > EVIDENCE_CACHE_MAX_ENTRIES:
