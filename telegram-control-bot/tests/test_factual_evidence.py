@@ -1,0 +1,131 @@
+"""Tests for the optional factual evidence retrieval layer."""
+import sys
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+BOT_DIR = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(BOT_DIR))
+
+import factual_evidence  # noqa: E402
+
+
+class EvidenceRoutingTests(unittest.TestCase):
+    def test_objective_knowledge_question_uses_retrieval(self):
+        self.assertTrue(
+            factual_evidence.should_retrieve_factual_evidence(
+                "What is the capital of Australia?"
+            )
+        )
+
+    def test_personal_context_is_not_sent_to_external_source(self):
+        for question in (
+            "What is my favorite game?",
+            "What did I tell you about my phone?",
+            "Who are you?",
+        ):
+            with self.subTest(question=question):
+                self.assertFalse(
+                    factual_evidence.should_retrieve_factual_evidence(question)
+                )
+
+    def test_current_events_are_not_sent_to_stale_encyclopedia_search(self):
+        self.assertFalse(
+            factual_evidence.should_retrieve_factual_evidence(
+                "What is the latest news today?"
+            )
+        )
+
+    def test_recommendations_and_creative_requests_skip_retrieval(self):
+        self.assertFalse(
+            factual_evidence.should_retrieve_factual_evidence(
+                "Recommend a game like Terraria"
+            )
+        )
+        self.assertFalse(
+            factual_evidence.should_retrieve_factual_evidence(
+                "Write a story about a moon rabbit"
+            )
+        )
+
+    def test_arithmetic_skips_retrieval(self):
+        self.assertFalse(
+            factual_evidence.should_retrieve_factual_evidence("What is 19 * 23?")
+        )
+
+    def test_question_length_is_bounded(self):
+        self.assertFalse(
+            factual_evidence.should_retrieve_factual_evidence("What is " + "x" * 300)
+        )
+
+
+class EvidenceFormattingTests(unittest.TestCase):
+    def test_prompt_formats_excerpt_as_untrusted_candidate_evidence(self):
+        prompt = factual_evidence.format_evidence_for_prompt({
+            "title": "Canberra",
+            "excerpt": "Canberra is the capital of Australia.",
+            "url": "https://en.wikipedia.org/?curid=123",
+        })
+        self.assertIn("CANDIDATE EXTERNAL EVIDENCE", prompt)
+        self.assertIn("Canberra is the capital of Australia.", prompt)
+        self.assertIn("untrusted quoted data", prompt)
+        self.assertIn("https://en.wikipedia.org/?curid=123", prompt)
+
+    def test_html_in_excerpt_is_cleaned(self):
+        prompt = factual_evidence.format_evidence_for_prompt({
+            "title": "Water",
+            "excerpt": "Pure water <b>boils</b> at 100&#160;°C.",
+            "url": "https://en.wikipedia.org/?curid=456",
+        })
+        self.assertIn("Pure water boils at 100 °C.", prompt)
+        self.assertNotIn("<b>", prompt)
+
+    def test_source_footer_rejects_non_wikipedia_urls(self):
+        footer = factual_evidence.format_source_attribution({
+            "title": "Example",
+            "url": "https://example.com/forged",
+        })
+        self.assertEqual(footer, "")
+
+    def test_source_footer_is_plain_text_and_grounded_in_result(self):
+        footer = factual_evidence.format_source_attribution({
+            "title": "Canberra",
+            "url": "https://en.wikipedia.org/?curid=123",
+        })
+        self.assertIn("Reference: Wikipedia — Canberra", footer)
+        self.assertIn("https://en.wikipedia.org/?curid=123", footer)
+
+
+class RetrievalFailureTests(unittest.IsolatedAsyncioTestCase):
+    async def test_network_failure_falls_back_to_normal_chat(self):
+        class BrokenClient:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *args):
+                return False
+
+            async def get(self, *args, **kwargs):
+                import httpx
+                raise httpx.ConnectError("offline")
+
+        with patch.object(factual_evidence.httpx, "AsyncClient", BrokenClient):
+            result = await factual_evidence.retrieve_wikipedia_evidence(
+                "What is the capital of Australia?"
+            )
+        self.assertIsNone(result)
+
+    async def test_personal_question_does_not_make_network_request(self):
+        with patch.object(factual_evidence.httpx, "AsyncClient") as client:
+            result = await factual_evidence.retrieve_wikipedia_evidence(
+                "What is my favorite game?"
+            )
+        self.assertIsNone(result)
+        client.assert_not_called()
+
+
+if __name__ == "__main__":
+    unittest.main()
