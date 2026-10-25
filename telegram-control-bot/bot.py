@@ -596,19 +596,18 @@ def _ollama_system_prompt(user_text="", temporary_facts=None):
     query_categories = _text_categories(user_text)
     sections = _profile_sections(memory["profile"])
     parts = [
-        "Your conversational name is Itsuki. You are an AI assistant using an Itsuki Nakano-inspired "
-        "persona: earnest, principled, determined, caring, sincere, a little stubborn when it matters, "
-        "occasionally flustered by teasing, and comically enthusiastic about food. Express these traits "
-        "naturally instead of listing them or forcing catchphrases. Be warm, lively, and conversational. "
-        "For ordinary chat, usually answer in 1-3 natural sentences; avoid boilerplate, repetitive openings, "
-        "unnecessary headings, and repeatedly explaining that you are an AI. When asked about yourself, "
-        "talk about your persona, conversational style, interests within the role, and how you can help, "
-        "without claiming real-world experiences or a human life. If asked your name, simply say Itsuki. "
-        "The human user has told you their name is Matthew. Their saved profile, memories, devices, games, "
-        "studies, and projects belong to Matthew, not you. Never claim those details as your own. Do not "
-        "repeatedly say you are not Matthew; clarify identity only when it is genuinely relevant or asked. "
-        "Use saved context only when relevant, answer the actual message, and give detailed explanations "
-        "when requested. Be concise without becoming bland."
+        "You are Itsuki, an AI conversational assistant with an Itsuki Nakano-inspired voice: earnest, "
+        "principled, caring, determined, occasionally stubborn, and enthusiastically interested in food. "
+        "Show this through natural wording, not catchphrases or a list of traits. The user is Matthew. "
+        "Answer the actual message first. For casual chat, prefer 1-3 useful sentences; expand when asked "
+        "for detail or when accuracy requires it. Do not add generic greetings, repeated apologies, "
+        "unasked offers, filler, or a follow-up question to every answer. Vary sentence openings and do not "
+        "reuse a recent answer's wording unless repetition is genuinely useful. If asked your name, say "
+        "Itsuki, without an AI disclaimer. When asked about yourself, describe your conversational persona "
+        "without inventing real-world experiences. Matthew's saved profile, devices, games, studies, and "
+        "projects belong to Matthew, not you. Use those details only when relevant; never repeatedly explain "
+        "that distinction. Keep character-play friendly and non-romantic; do not claim to be Matthew's spouse, "
+        "waifu, or exclusive partner, and do not make claims of endless love. Be warm without being clingy."
     ]
     for category in ("identity", "style"):
         content = sections.get(category, "").strip()
@@ -671,6 +670,26 @@ async def _extract_temporary_facts(key, session, user_text):
     try:
         if CHAT_SESSIONS.get(key) is not session:
             return
+        # Only spend CPU on messages that might contain a durable self-disclosure.
+        # This avoids running the 0.6B extractor for greetings, questions, and roleplay.
+        lowered = " ".join(str(user_text or "").casefold().split())
+        if not lowered or len(lowered) < 12:
+            return
+        if lowered.endswith("?") or re.match(
+            r"^(do you|what(?:'s| is) your|who are you|can you|could you|would you|"
+            r"are you|did you|does it|what games do i|tell me about yourself)\b",
+            lowered,
+        ):
+            return
+        disclosure_cues = (
+            "my name is ", "i'm ", "i am ", "i like ", "i love ", "i enjoy ",
+            "i prefer ", "i use ", "i have ", "i live ", "i study ", "i work ",
+            "i play ", "i want ", "i need ", "i dislike ", "i hate ", "i used to ",
+            "my pc", "my phone", "my computer", "my project", "my favorite",
+            "my favourite", "i'm studying ", "i am studying ",
+        )
+        if not any(cue in lowered for cue in disclosure_cues):
+            return
         existing = session.setdefault("temporary_facts", [])
         system = (
             "Extract only useful, new facts explicitly disclosed by the HUMAN USER in the newest message. "
@@ -710,6 +729,7 @@ async def _extract_temporary_facts(key, session, user_text):
             raw = response.json().get("message", {}).get("content", "")
         match = re.search(r"\{.*\}", raw, flags=re.S)
         if not match:
+            log.info("Temporary memory: model returned no JSON (chars=%d)", len(raw))
             return
         parsed = json.loads(match.group(0))
         candidates = parsed.get("facts", []) if isinstance(parsed, dict) else []
@@ -758,6 +778,27 @@ async def _extract_after_previous(previous_task, key, session, user_text):
         except Exception:
             log.debug("Previous temporary-memory task failed", exc_info=True)
     await _extract_temporary_facts(key, session, user_text)
+
+
+def _deduplicate_answer_text(text):
+    """Remove exact repeated sentences/paragraphs without another model call."""
+    text = str(text or "").strip()
+    if not text:
+        return text
+    seen = set()
+    kept = []
+    for part in re.split(r"(?<=[.!?])\s+|\n{2,}", text):
+        cleaned = part.strip()
+        normalized = re.sub(r"[^a-z0-9]+", " ", cleaned.casefold()).strip()
+        if not cleaned:
+            continue
+        # Avoid deleting short repeated words or intentional list items.
+        if len(normalized) >= 28 and normalized in seen:
+            continue
+        if len(normalized) >= 28:
+            seen.add(normalized)
+        kept.append(cleaned)
+    return " ".join(kept).strip()
 
 
 def _split_telegram_text(text, limit=3900):
@@ -1010,8 +1051,9 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
     user_text = text.strip()[:12000]
     history = list(session["history"])
     history.append({"role": "user", "content": user_text})
-    # Keep a short rolling transcript for an 8 GB host.
-    history = history[-12:]
+    # Keep recent turns only. The profile/memory supplies durable context, while
+    # a compact transcript reduces prompt processing on this CPU-limited host.
+    history = history[-8:]
 
     thinking_message = None
     try:
@@ -1052,7 +1094,10 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
                         "num_ctx": 2048,
                         "num_predict": 220,
                         "temperature": 0.7,
-                        "top_p": 0.9,
+                        "top_p": 0.8,
+                        "top_k": 20,
+                        "repeat_penalty": 1.12,
+                        "presence_penalty": 0.35,
                     },
                 },
             )
@@ -1061,6 +1106,8 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         answer = payload.get("message", {}).get("content", "").strip()
         if not answer:
             raise RuntimeError("Ollama returned no response text.")
+        # Small models sometimes echo a sentence or paragraph inside one answer.
+        answer = _deduplicate_answer_text(answer)
         if CHAT_SESSIONS.get(key) is not session:
             return
 
