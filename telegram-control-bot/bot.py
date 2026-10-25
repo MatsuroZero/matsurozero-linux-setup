@@ -520,7 +520,7 @@ def _save_ollama_memory(memory):
 
 MEMORY_CATEGORIES = {
     "identity": ("identity", "about matthew", "overview", "background", "age", "egypt", "law student"),
-    "style": ("style", "conversation", "tone", "personality", "itsuki", "spoiler", "response", "food"),
+    "style": ("style", "conversation", "tone", "personality", "itsuki", "spoiler", "response"),
     "learning": ("learning", "study", "chemistry", "physics", "law", "first principles", "obsidian", "notes"),
     "projects": ("project", "localnexus", "dashboard", "flask", "software", "coding", "repository", "github"),
     "linux": ("linux", "cachyos", "hyprland", "serpantinum", "quickshell", "desktop", "ollama", "hardware", "android", "phone", "network", "server"),
