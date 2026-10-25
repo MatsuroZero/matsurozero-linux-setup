@@ -160,3 +160,67 @@ def format_source_attribution(evidence):
         f"\n\nPotential reference (retrieved automatically; not independently verified): "
         f"Wikipedia — {title}\n{url}"
     )
+
+
+
+_TOKEN_RE = re.compile(r"[a-zA-Z][a-zA-Z'-]{2,}")
+
+
+def _content_tokens(text):
+    """Return normalized content words for a deliberately simple support heuristic."""
+    stop_words = {
+        "about", "after", "again", "also", "because", "been", "being", "between",
+        "could", "does", "from", "have", "into", "more", "most", "much", "only",
+        "other", "over", "same", "some", "such", "than", "that", "their", "them",
+        "then", "there", "these", "they", "this", "those", "through", "under",
+        "very", "what", "when", "where", "which", "while", "with", "would",
+        "your", "you", "are", "was", "were", "the", "and", "for", "not", "but",
+        "can", "its", "his", "her", "she", "him", "has", "had", "how", "who",
+        "why", "all", "any", "our", "out", "one", "two", "use", "used", "using",
+        "per", "each", "make", "made", "does", "did", "get", "got", "like",
+        "known", "called", "often", "typically", "generally",
+    }
+    return {
+        token.casefold()
+        for token in _TOKEN_RE.findall(str(text or ""))
+        if token.casefold() not in stop_words
+    }
+
+
+def assess_answer_support(question, answer, evidence):
+    """Estimate lexical support; this is not a truth or contradiction detector.
+
+    Returns a small diagnostic dictionary. Shared key terms can indicate that an
+    answer is related to an extract, but cannot establish that its claims are true.
+    """
+    if not isinstance(evidence, dict) or not str(answer or "").strip():
+        return {"status": "unavailable", "overlap": 0.0, "matched_terms": []}
+
+    answer_terms = _content_tokens(answer)
+    evidence_terms = _content_tokens(
+        str(evidence.get("title") or "") + " " + str(evidence.get("excerpt") or "")
+    )
+    question_terms = _content_tokens(question)
+    # Question words alone should not make an answer appear supported.
+    claim_terms = answer_terms - question_terms
+    if not claim_terms:
+        claim_terms = answer_terms
+    matched = sorted(claim_terms & evidence_terms)
+    overlap = len(matched) / max(1, len(claim_terms))
+
+    # Require at least one meaningful answer term and a modest fraction of
+    # answer-specific terms in the source. This is a warning heuristic only.
+    supported = bool(matched) and overlap >= 0.25
+    return {
+        "status": "candidate_supported" if supported else "insufficient_overlap",
+        "overlap": round(overlap, 3),
+        "matched_terms": matched[:12],
+    }
+
+
+def format_support_warning():
+    """Tell the user the source did not visibly support the generated answer."""
+    return (
+        "\n\n⚠️ I found a possible reference, but the answer did not clearly match "
+        "the retrieved extract. Please treat the answer as unverified."
+    )
