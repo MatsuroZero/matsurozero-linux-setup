@@ -207,7 +207,7 @@ def assess_answer_support(question, answer, evidence):
     question_terms = _content_tokens(question)
 
     # Basic polarity check: shared words alone cannot support a negated claim.
-    negation_pattern = re.compile(r"\\b(?:not|never|without|neither|cannot)\\b", re.IGNORECASE)
+    negation_pattern = re.compile(r"\b(?:not|never|without|neither|cannot)\b", re.IGNORECASE)
     if bool(negation_pattern.search(answer_text)) != bool(negation_pattern.search(evidence_text)):
         return {
             "status": "insufficient_overlap",
