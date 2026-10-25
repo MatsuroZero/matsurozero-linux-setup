@@ -6,6 +6,7 @@ import logging
 import httpx
 from factual_evidence import (
     assess_answer_support,
+    assess_claim_level_support,
     format_multi_source_attribution,
     format_multi_source_evidence_for_prompt,
     format_support_warning,
@@ -1452,7 +1453,7 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         # Small models sometimes echo a sentence or paragraph inside one answer.
         answer = _deduplicate_answer_text(answer)
         if evidence_prompt:
-            support = assess_answer_support(user_text, answer, evidence)
+            support = assess_claim_level_support(user_text, answer, evidence)
             if support["status"] == "candidate_supported":
                 answer += format_multi_source_attribution(evidence)
             else:
