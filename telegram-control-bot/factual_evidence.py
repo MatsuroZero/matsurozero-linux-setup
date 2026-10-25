@@ -7,6 +7,7 @@ the model to abstain when the extract does not answer the question.
 import asyncio
 import copy
 import html
+from decimal import Decimal, InvalidOperation
 import logging
 from collections import OrderedDict
 import re
@@ -643,8 +644,8 @@ def detect_evidence_conflicts(evidence):
         is_percent = value.endswith("%")
         raw = value[:-1] if is_percent else value
         try:
-            number = format(float(raw.replace(",", "")), ".12g")
-        except (ValueError, OverflowError):
+            number = format(Decimal(raw.replace(",", "")).normalize(), "f")
+        except (InvalidOperation, ValueError):
             number = raw.replace(",", "")
         return number + ("%" if is_percent else "")
 
