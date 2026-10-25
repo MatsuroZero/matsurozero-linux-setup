@@ -233,7 +233,12 @@ def assess_answer_support(question, answer, evidence):
     # Question words alone should not make an answer appear supported.
     claim_terms = answer_terms - question_terms
     if not claim_terms:
-        claim_terms = answer_terms
+        return {
+            "status": "insufficient_overlap",
+            "overlap": 0.0,
+            "matched_terms": [],
+            "reason": "no_answer_specific_terms",
+        }
     matched = sorted(claim_terms & evidence_terms)
     overlap = len(matched) / max(1, len(claim_terms))
 
