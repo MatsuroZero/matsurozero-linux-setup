@@ -1,6 +1,7 @@
 """Additional edge-case tests for deterministic bot behavior."""
 import sys
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 BOT_DIR = Path(__file__).resolve().parents[1]
@@ -38,6 +39,39 @@ class ArithmeticEdgeCaseTests(unittest.TestCase):
     def test_rejects_expressions_with_too_many_ast_nodes(self):
         expression = " + ".join(["1"] * 40)
         self.assertIsNone(bot._answer_arithmetic_question(expression))
+
+
+class PromptMemorySelectionTests(unittest.TestCase):
+    def test_retrieves_only_relevant_tagged_saved_facts(self):
+        memory = {
+            "profile": (
+                "ABOUT MATTHEW: Matthew is a law student.\\n"
+                "GAMING AND MEDIA: Matthew enjoys Terraria.\\n"
+                "FOOD: Matthew likes pizza."
+            ),
+            "facts": [
+                "gaming: Matthew's favorite game is Terraria",
+                "food: Matthew's favorite food is pizza",
+            ],
+        }
+        with patch.object(bot, "_load_ollama_memory", return_value=memory):
+            prompt = bot._ollama_system_prompt("Recommend games", [])
+        self.assertIn("Matthew's favorite game is Terraria", prompt)
+        self.assertNotIn("Matthew's favorite food is pizza", prompt)
+        self.assertIn("CORE IDENTITY CONTEXT", prompt)
+
+    def test_general_greeting_does_not_load_unrelated_tagged_facts(self):
+        memory = {
+            "profile": "",
+            "facts": [
+                "gaming: Matthew's favorite game is Terraria",
+                "food: Matthew's favorite food is pizza",
+            ],
+        }
+        with patch.object(bot, "_load_ollama_memory", return_value=memory):
+            prompt = bot._ollama_system_prompt("Hello!", [])
+        self.assertNotIn("Matthew's favorite game is Terraria", prompt)
+        self.assertNotIn("Matthew's favorite food is pizza", prompt)
 
 
 class MemoryEdgeCaseTests(unittest.TestCase):
