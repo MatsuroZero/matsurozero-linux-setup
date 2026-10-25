@@ -537,76 +537,106 @@ PROFILE_LABELS = [
 
 def _text_categories(text):
     lowered = str(text or "").casefold()
-    return {category for category, words in MEMORY_CATEGORIES.items()
-            if any(word in lowered for word in words)}
+    return {
+        category for category, words in MEMORY_CATEGORIES.items()
+        if any(word in lowered for word in words)
+    }
+
 
 def _profile_sections(profile):
-    """Split saved profiles at known headings without making another model call."""
+    """Split a profile at known headings without another model call."""
     text = str(profile or "").strip()
     if not text:
         return {}
-    labels = sorted(PROFILE_LABELS, key=lambda item: len(item[0]), reverse=True)
-    pattern = re.compile(r"(?i)(?<![\\w])(" + "|".join(re.escape(label) for label, _ in labels) + r")\\s*:")
-    matches = list(pattern.finditer(text))
+
+    lowered = text.casefold()
+    headings = []
+    for label, category in PROFILE_LABELS:
+        needle = label.casefold()
+        offset = 0
+        while True:
+            position = lowered.find(needle, offset)
+            if position < 0:
+                break
+            # A heading must start at the beginning or after a separator, and end with a colon.
+            before_ok = position == 0 or not lowered[position - 1].isalnum()
+            colon = position + len(needle)
+            while colon < len(text) and text[colon].isspace():
+                colon += 1
+            if before_ok and colon < len(text) and text[colon] == ":":
+                headings.append((position, colon + 1, category))
+            offset = position + len(needle)
+
+    headings.sort(key=lambda item: item[0])
     sections = {}
-    if matches:
-        for index, match in enumerate(matches):
-            label = next(label for label, _ in labels if label.casefold() == match.group(1).casefold())
-            category = next(category for name, category in labels if name.casefold() == label.casefold())
-            end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
-            content = text[match.end():end].strip(" \\n\\t:-")
+    if headings:
+        for index, (position, content_start, category) in enumerate(headings):
+            content_end = headings[index + 1][0] if index + 1 < len(headings) else len(text)
+            content = text[content_start:content_end].strip(" \n\t:-")
             if content:
                 sections.setdefault(category, []).append(content)
-        return {key: " ".join(value) for key, value in sections.items()}
-    # Free-form legacy profiles are indexed sentence by sentence.
-    for sentence in re.split(r"(?<=[.!?])\\s+", text):
+        return {key: " ".join(values) for key, values in sections.items()}
+
+    # Legacy free-form profile: classify short sentences into topical sections.
+    sentences = text.replace("\n", " ").split(". ")
+    for sentence in sentences:
+        sentence = sentence.strip()
+        if not sentence:
+            continue
         categories = _text_categories(sentence) or {"identity"}
         for category in categories:
-            sections.setdefault(category, []).append(sentence.strip())
-    return {key: " ".join(value) for key, value in sections.items()}
+            sections.setdefault(category, []).append(sentence)
+    return {key: " ".join(values) for key, values in sections.items()}
+
 
 def _ollama_system_prompt(user_text=""):
-    """Use a tiny always-on prompt plus only the memory relevant to this message."""
+    """Build an identity-safe prompt with only topic-relevant saved memory."""
     memory = _load_ollama_memory()
     query_categories = _text_categories(user_text)
     sections = _profile_sections(memory["profile"])
     parts = [
-        "You are the AI assistant, speaking with Matthew, a separate human being. "
-        "The saved profile and saved facts describe Matthew, NOT you. Any first-person wording "
-        "inside saved profile text refers to Matthew and must be interpreted as 'Matthew...' or "
-        "'the user...', never as the assistant's biography. You are not Matthew. You do not own "
-        "his devices, have his life history, study law, play his games, or create his projects. "
-        "The Itsuki-inspired traits are your conversational style only, not a claim that you are "
-        "Matthew or literally Itsuki. When discussing the user's memories, say 'you' or 'Matthew'; "
-        "use 'I' only for the AI assistant's own actions and limitations. If ownership is unclear, "
-        "ask instead of guessing. Be accurate, concise, explain why when useful, and never invent "
-        "personal details absent from retrieved memory or this conversation.",
+        "You are the AI assistant speaking with Matthew, a separate human user. "
+        "The saved profile and saved facts describe Matthew, NOT you. Any first-person "
+        "wording inside saved profile text refers to Matthew and must be interpreted as "
+        "'Matthew...' or 'the user...', never as the assistant's biography. You are not "
+        "Matthew. You do not own his devices, have his life history, study law, play his "
+        "games, or create his projects. Itsuki-inspired traits describe your conversational "
+        "style only; they do not mean you are Matthew or literally Itsuki. When discussing "
+        "the user's memories, say 'you' or 'Matthew'; use 'I' only for the AI assistant's "
+        "own actions, preferences explicitly framed as conversational opinions, and limitations. "
+        "Do not invent personal experiences. If ownership is unclear, ask instead of guessing."
     ]
-    # Identity and response style are the always-on memory layer, capped to stay small.
+
+    # Keep a concise user identity and assistant-style layer available on every turn.
     for category in ("identity", "style"):
         content = sections.get(category, "").strip()
         if content:
-            parts.append(f"CORE {category.upper()} CONTEXT:\\n{content[:900]}")
-    # Load topic-specific profile sections only when the current message matches.
+            parts.append(f"CORE {category.upper()} CONTEXT:\n{content[:700]}")
+
+    # Retrieve topical profile sections only when the message matches that topic.
     for category in sorted(query_categories - {"identity", "style"}):
         content = sections.get(category, "").strip()
         if content:
-            parts.append(f"RELEVANT {category.upper()} MEMORY:\\n{content[:1400]}")
+            parts.append(f"RELEVANT {category.upper()} MEMORY:\n{content[:1100]}")
+
     relevant_facts = []
-    for fact in memory["facts"]:
-        explicit = re.match(r"^([a-z_-]+)\\s*:\\s*(.*)$", fact, flags=re.I)
-        if explicit:
-            category, body = explicit.group(1).casefold(), explicit.group(2)
-            if category in MEMORY_CATEGORIES and category not in query_categories:
+    for raw_fact in memory["facts"]:
+        fact = str(raw_fact).strip()
+        if not fact:
+            continue
+        category, separator, body = fact.partition(":")
+        category = category.strip().casefold()
+        if separator and category in MEMORY_CATEGORIES:
+            if category not in query_categories:
                 continue
-            if category in MEMORY_CATEGORIES:
-                fact = body
+            fact = body.strip()
         categories = _text_categories(fact)
-        if not categories or not query_categories or categories.intersection(query_categories):
+        if categories.intersection(query_categories) or (not categories and not query_categories):
             relevant_facts.append(fact)
+
     if relevant_facts:
-        parts.append("RELEVANT SAVED FACTS:\\n" + "\\n".join(f"- {fact[:240]}" for fact in relevant_facts[:8]))
-    return "\\n\\n".join(parts)
+        parts.append("RELEVANT SAVED FACTS:\n" + "\n".join(f"- {fact[:200]}" for fact in relevant_facts[:6]))
+    return "\n\n".join(parts)
 
 
 def _split_telegram_text(text, limit=3900):
@@ -619,11 +649,14 @@ async def _ollama_models():
         response = await client.get(f"{OLLAMA_BASE_URL}/api/tags")
         response.raise_for_status()
         payload = response.json()
-    return sorted({
+    names = {
         item.get("name", "").strip()
         for item in payload.get("models", [])
         if isinstance(item, dict) and item.get("name", "").strip()
-    })
+    }
+    # Put the preferred conversational model first in the /chat picker.
+    preferred = ["qwen3:1.7b", "qwen3:0.6b"]
+    return [name for name in preferred if name in names] + sorted(names - set(preferred))
 
 
 async def _ensure_ollama():
