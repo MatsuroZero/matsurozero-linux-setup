@@ -662,3 +662,25 @@ class EvidenceCacheTests(unittest.IsolatedAsyncioTestCase):
             )
         finally:
             factual_evidence.EVIDENCE_CACHE_MAX_ENTRIES = 128
+
+
+    async def test_cache_uses_lru_eviction(self):
+        factual_evidence.EVIDENCE_CACHE_MAX_ENTRIES = 2
+        try:
+            results = [{"title": value} for value in ("A", "B", "C", "B")]
+            with patch.object(
+                factual_evidence,
+                "_retrieve_multi_source_evidence_uncached",
+                new=AsyncMock(side_effect=results),
+            ) as retrieve:
+                await factual_evidence.retrieve_multi_source_evidence("What is A?")
+                await factual_evidence.retrieve_multi_source_evidence("What is B?")
+                await factual_evidence.retrieve_multi_source_evidence("What is A?")
+                await factual_evidence.retrieve_multi_source_evidence("What is C?")
+                await factual_evidence.retrieve_multi_source_evidence("What is B?")
+            self.assertEqual(retrieve.await_count, 4)
+            self.assertIn("what is a?", factual_evidence._EVIDENCE_CACHE)
+            self.assertIn("what is b?", factual_evidence._EVIDENCE_CACHE)
+            self.assertNotIn("what is c?", factual_evidence._EVIDENCE_CACHE)
+        finally:
+            factual_evidence.EVIDENCE_CACHE_MAX_ENTRIES = 128
