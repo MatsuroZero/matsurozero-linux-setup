@@ -192,8 +192,8 @@ class EvidenceFormattingTests(unittest.TestCase):
             evidence,
         )
         self.assertEqual(result["status"], "insufficient_overlap")
-        self.assertIn("Isaac", result["unsupported_named_entities"])
-        self.assertIn("Newton", result["unsupported_named_entities"])
+        self.assertIn("isaac", result["unsupported_named_entities"])
+        self.assertIn("newton", result["unsupported_named_entities"])
 
     def test_unsupported_numeric_detail_is_flagged_even_when_topic_words_match(self):
         evidence = {
