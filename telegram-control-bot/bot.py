@@ -1460,7 +1460,7 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
                 # This is only a lexical overlap check, not proof of correctness.
                 # Be transparent when the generated answer doesn't visibly match
                 # the retrieved extract instead of presenting the source as support.
-                answer += format_support_warning()
+                answer += format_support_warning(support)
                 answer += format_multi_source_attribution(evidence)
         if CHAT_SESSIONS.get(key) is not session:
             return
