@@ -60,6 +60,43 @@ def should_retrieve_factual_evidence(question):
     ))
 
 
+
+def is_time_sensitive_question(question):
+    """Identify current facts that must not be guessed without a live source."""
+    text = " ".join(str(question or "").split()).strip()
+    if not text or len(text) > MAX_QUESTION_CHARS:
+        return False
+    lowered = text.casefold()
+    if re.search(
+        r"\b(?:what did i tell you|what do you know about me|what do you remember about me|"
+        r"my\s+(?:phone|computer|pc|device|address|name|age|account|password|favorite|"
+        r"favourite|family|location|siblings|profile|history))\b",
+        lowered,
+    ):
+        return False
+    if re.search(
+        r"\b(?:recommend|recommendation|suggest|roleplay|role-play|pretend|write a story|"
+        r"write a poem|brainstorm)\b",
+        lowered,
+    ):
+        return False
+    return bool(re.search(
+        r"\b(?:current(?:ly)?|latest|today|right now|breaking news|this week|this month|"
+        r"recent(?:ly)?|weather|forecast|live score|score right now|stock price|exchange rate)\b",
+        lowered,
+    ))
+
+
+def format_time_sensitive_unavailable_prompt():
+    """Prevent confident current-affairs guesses when no live evidence was found."""
+    return (
+        "TIME-SENSITIVE FACTUAL QUESTION WITHOUT LIVE EVIDENCE: No current source was "
+        "retrieved for this question. Do not answer from training memory or infer a "
+        "current status. Briefly tell the user that you cannot verify the up-to-date "
+        "answer from the available sources. Do not fabricate citations or imply that "
+        "you browsed successfully."
+    )
+
 def _clean_excerpt(value):
     value = re.sub(r"<[^>]*>", " ", str(value or ""))
     return " ".join(html.unescape(value).split())[:MAX_EXTRACT_CHARS]
