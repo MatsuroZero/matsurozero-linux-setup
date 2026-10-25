@@ -420,3 +420,91 @@ class MultiSourceEvidenceTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(result["status"], "candidate_supported")
 
+
+
+class StackOverflowAnswerRetrievalTests(unittest.IsolatedAsyncioTestCase):
+    async def test_retrieval_uses_accepted_answer_body_not_question_body(self):
+        class FakeResponse:
+            def __init__(self, payload):
+                self.payload = payload
+
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return self.payload
+
+        class FakeClient:
+            def __init__(self, *args, **kwargs):
+                self.calls = []
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *args):
+                return False
+
+            async def get(self, url, params):
+                self.calls.append((url, params))
+                if "/search/advanced" in url:
+                    return FakeResponse({"items": [
+                        {
+                            "question_id": 42,
+                            "title": "How do I use Python?",
+                            "body": "<p>QUESTION BODY SHOULD NOT BE USED</p>",
+                            "accepted_answer_id": 420,
+                        }
+                    ]})
+                return FakeResponse({"items": [
+                    {
+                        "answer_id": 421,
+                        "question_id": 42,
+                        "score": 100,
+                        "body": "<p>Another community answer.</p>",
+                    },
+                    {
+                        "answer_id": 420,
+                        "question_id": 42,
+                        "score": 2,
+                        "body": "<p>The accepted answer explains the Python interpreter.</p>",
+                    },
+                ]})
+
+        client = FakeClient()
+        with patch.object(factual_evidence.httpx, "AsyncClient", return_value=client):
+            results = await factual_evidence.retrieve_stackexchange_evidence(
+                "How do I use Python?"
+            )
+
+        self.assertEqual(len(results), 1)
+        self.assertIn("(accepted answer)", results[0]["title"])
+        self.assertEqual(
+            results[0]["excerpt"],
+            "The accepted answer explains the Python interpreter.",
+        )
+        self.assertEqual(results[0]["url"], "https://stackoverflow.com/a/420")
+        self.assertNotIn("QUESTION BODY", results[0]["excerpt"])
+        self.assertEqual(len(client.calls), 2)
+        self.assertIn("/questions/42/answers", client.calls[1][0])
+        self.assertEqual(client.calls[1][1]["sort"], "votes")
+
+    async def test_stackoverflow_retrieval_failure_is_nonfatal(self):
+        class BrokenClient:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *args):
+                return False
+
+            async def get(self, *args, **kwargs):
+                import httpx
+                raise httpx.ConnectError("offline")
+
+        with patch.object(factual_evidence.httpx, "AsyncClient", BrokenClient):
+            results = await factual_evidence.retrieve_stackexchange_evidence(
+                "How do I use Python?"
+            )
+        self.assertEqual(results, [])
