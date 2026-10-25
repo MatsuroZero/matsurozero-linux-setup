@@ -192,7 +192,7 @@ def main():
                 row = {"model": model, "repeat": repeat + 1, "case": case["id"]}
                 try:
                     row.update(request_chat(args.url, model, case["prompt"], args.timeout))
-                    row["quality_pass"], row["quality_note"] = grade(case["check"], row["response"])
+                    row["quality_pass"], row["quality_note"] = grade(case["id"], row["response"])
                 except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError) as exc:
                     row["error"] = f"{type(exc).__name__}: {exc}"
                 report["results"].append(row)
