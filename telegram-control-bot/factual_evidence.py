@@ -231,13 +231,10 @@ def assess_answer_support(question, answer, evidence):
         return {"status": "unavailable", "overlap": 0.0, "matched_terms": []}
 
     answer_text = str(answer or "")
-    records = [evidence]
-    extras = evidence.get("additional_sources", [])
-    if isinstance(extras, list):
-        records.extend(item for item in extras if isinstance(item, dict))
+    records = _trusted_evidence_records(evidence)
     evidence_text = " ".join(
         str(item.get("title") or "") + " " + str(item.get("excerpt") or "")
-        for item in records if isinstance(item, dict)
+        for item in records
     )
     answer_terms = _content_tokens(answer_text)
     evidence_terms = _content_tokens(evidence_text)
