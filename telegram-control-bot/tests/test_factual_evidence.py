@@ -721,7 +721,7 @@ class ClaimLevelSupportTests(unittest.TestCase):
         }
         result = factual_evidence.assess_claim_level_support(
             "What is the capital of Australia?",
-            "Canberra is Australia's capital. It has excellent nightlife.",
+            "Canberra is the capital city of Australia. It has excellent nightlife.",
             evidence,
         )
         self.assertEqual(result["status"], "insufficient_overlap")
@@ -748,7 +748,7 @@ class ClaimLevelSupportTests(unittest.TestCase):
         }
         result = factual_evidence.assess_claim_level_support(
             "Which planet is largest?",
-            "- Jupiter is the largest planet in the Solar System.\\n- Jupiter has 80 moons.",
+            "- Jupiter is the largest planet in the Solar System.\n- Jupiter has 80 moons.",
             evidence,
         )
         self.assertEqual(result["status"], "insufficient_overlap")
