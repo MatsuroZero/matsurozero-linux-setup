@@ -68,6 +68,8 @@ class PromptMemorySelectionTests(unittest.TestCase):
         self.assertIn("Matthew's favorite game is Terraria", prompt)
         self.assertNotIn("Matthew's favorite food is pizza", prompt)
         self.assertIn("CORE IDENTITY CONTEXT", prompt)
+        self.assertIn("RELEVANT GAMING MEMORY", prompt)
+        self.assertNotIn("RELEVANT FOOD MEMORY", prompt)
 
     def test_general_greeting_does_not_load_unrelated_tagged_facts(self):
         memory = {
@@ -95,6 +97,12 @@ class MemoryEdgeCaseTests(unittest.TestCase):
     def test_generic_show_verb_does_not_match_creative_category(self):
         categories = bot._text_categories("Show me how the project works.")
         self.assertNotIn("creative", categories)
+
+    def test_topic_categories_are_independent(self):
+        self.assertIn("linux", bot._text_categories("My Linux desktop is slow."))
+        self.assertIn("learning", bot._text_categories("I'm studying law."))
+        self.assertIn("food", bot._text_categories("I want a pizza recipe."))
+        self.assertNotIn("gaming", bot._text_categories("I want a pizza recipe."))
 
     def test_new_favorite_replaces_old_favorite_of_same_type(self):
         bot._add_temporary_fact(self.session, "gaming", "Matthew's favorite game is Minecraft")
