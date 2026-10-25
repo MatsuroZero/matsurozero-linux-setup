@@ -162,7 +162,7 @@ class EvidenceFormattingTests(unittest.TestCase):
         }
         result = factual_evidence.assess_answer_support(
             "What is the capital of Australia?",
-            "The capital of Australia is a city.",
+            "The capital of Australia.",
             evidence,
         )
         self.assertEqual(result["status"], "insufficient_overlap")
