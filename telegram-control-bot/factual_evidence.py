@@ -225,10 +225,10 @@ def _normalize_support_phrases(text):
     """
     normalized = str(text or "").casefold()
     phrase_equivalents = (
-        (r"\bseat of government\\b", "capital city"),
-        (r"\bserves as\\b", "is the"),
+        (r"\bseat of government\b", "capital city"),
+        (r"\bserves as\b", "is the"),
         (
-            r"\bscatter(?:s|ed|ing)? blue sunlight more strongly than red sunlight\\b",
+            r"\bscatter(?:s|ed|ing)? blue sunlight more strongly than red sunlight\b",
             "scatter blue wavelengths of sunlight more strongly than red wavelengths of sunlight",
         ),
     )
