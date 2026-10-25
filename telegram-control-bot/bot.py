@@ -1191,7 +1191,6 @@ def _answer_from_recent_disclosures(user_text, prior_history):
                 if game:
                     return f"You said {game} is your favorite game."
 
-    if re.search(r"\bwhat\s+(?:show|series|tv show)s?\b|\bwhat\s+show\s+did\s+i\s+tell\s+you\b", query):
     if re.search(r"\bwhat\s+game\s+do\s+i\s+(?:love|like|enjoy)\s+playing\b|\bwhat\s+game\s+did\s+i\s+say\s+i\s+play\b", query):
         for item in reversed(prior_history):
             if not isinstance(item, dict) or item.get("role") != "user":
@@ -1207,6 +1206,7 @@ def _answer_from_recent_disclosures(user_text, prior_history):
                 if game:
                     return f"You said you love playing {game}."
 
+    if re.search(r"\bwhat\s+(?:show|series|tv show)s?\b|\bwhat\s+show\s+did\s+i\s+tell\s+you\b", query):
         for item in reversed(prior_history):
             if not isinstance(item, dict) or item.get("role") != "user":
                 continue
