@@ -593,6 +593,22 @@ class EvidenceConflictDetectionTests(unittest.TestCase):
         self.assertEqual(len(conflicts), 1)
         self.assertEqual(conflicts[0]["reason"], "different numeric values")
 
+    def test_numeric_disagreement_is_detected_when_another_number_matches(self):
+        evidence = {
+            "title": "Planet X",
+            "excerpt": "Planet X has twelve moons and two rings.",
+            "url": "https://en.wikipedia.org/?curid=123",
+            "additional_sources": [{
+                "title": "Planet X facts",
+                "excerpt": "Planet X has fourteen moons and two rings.",
+                "url": "https://stackoverflow.com/a/123",
+                "source": "Stack Overflow answer",
+            }],
+        }
+        conflicts = factual_evidence.detect_evidence_conflicts(evidence)
+        self.assertEqual(len(conflicts), 1)
+        self.assertEqual(conflicts[0]["reason"], "different numeric values")
+
     def test_similar_nonconflicting_sources_are_not_flagged(self):
         evidence = {
             "title": "Canberra",
