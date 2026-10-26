@@ -1,5 +1,6 @@
 export function isAuthorizedDiscordUser(userId, allowedUserId = process.env.DISCORD_ALLOWED_USER_ID) {
-  if (typeof userId !== "string" && typeof userId !== "number") return false;
+  // Discord snowflakes are returned as strings; numeric coercion can lose precision.
+  if (typeof userId !== "string") return false;
   if (allowedUserId === undefined || allowedUserId === null) return false;
 
   const candidate = String(userId).trim();
