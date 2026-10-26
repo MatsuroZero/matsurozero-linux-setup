@@ -4,7 +4,7 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { assertAuthorizedDiscordUser } from "./authz.js";
-import { getSystemSnapshot, getServiceSnapshot, getContainerSnapshot, getNetworkSnapshot, getProjectSnapshot, performProjectAction, getProjectLogs, getContainerLogs, validatePowerAction, performPowerAction, performServiceAction, performContainerAction } from "./control.js";
+import { getSystemSnapshot, getServiceSnapshot, getContainerSnapshot, getNetworkSnapshot, getProjectSnapshot, performProjectAction, getProjectLogs, getContainerLogs, validatePowerAction, performPowerAction, getHealthSnapshot, getDoctorSnapshot, performServiceAction, performContainerAction } from "./control.js";
 import { chat, getModelCatalog } from "./ai.js";
 import { getMemory, setMemoryProfile, rememberFact, forgetMemoryFacts } from "./memory.js";
 import { getRegistrySnapshot, runSavedCommand, runSavedProfile } from "./registry.js";
@@ -215,6 +215,12 @@ export function createAppServer() {
         }
         if (req.method === "GET" && url.pathname === "/api/network") {
           return send(res, 200, await getNetworkSnapshot());
+        }
+        if (req.method === "GET" && url.pathname === "/api/health/details") {
+          return send(res, 200, await getHealthSnapshot());
+        }
+        if (req.method === "GET" && url.pathname === "/api/doctor") {
+          return send(res, 200, await getDoctorSnapshot());
         }
         if (req.method === "GET" && url.pathname === "/api/system") {
           return send(res, 200, await getSystemSnapshot());
