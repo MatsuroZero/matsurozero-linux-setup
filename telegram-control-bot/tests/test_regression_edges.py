@@ -50,6 +50,31 @@ class ArithmeticEdgeCaseTests(unittest.TestCase):
         self.assertIsNone(bot._answer_arithmetic_question(expression))
 
 
+class BoundedChatHistoryTests(unittest.TestCase):
+    def test_latest_message_is_preserved_and_old_context_is_bounded(self):
+        history = [
+            {"role": "user", "content": "old user " + "x" * 4000},
+            {"role": "assistant", "content": "old assistant " + "y" * 4000},
+            {"role": "user", "content": "latest user message " + "z" * 5000},
+        ]
+        result = bot._bounded_chat_history(history)
+        self.assertEqual(result[-1]["content"], history[-1]["content"])
+        self.assertLessEqual(sum(len(item["content"]) for item in result[:-1]), 2400)
+        self.assertLessEqual(len(result), 5)
+
+    def test_empty_history_stays_empty(self):
+        self.assertEqual(bot._bounded_chat_history([]), [])
+
+    def test_history_does_not_mutate_callers_messages(self):
+        history = [
+            {"role": "user", "content": "previous context"},
+            {"role": "user", "content": "latest message"},
+        ]
+        original = [dict(item) for item in history]
+        bot._bounded_chat_history(history)
+        self.assertEqual(history, original)
+
+
 class PromptMemorySelectionTests(unittest.TestCase):
     def test_retrieves_only_relevant_tagged_saved_facts(self):
         memory = {
