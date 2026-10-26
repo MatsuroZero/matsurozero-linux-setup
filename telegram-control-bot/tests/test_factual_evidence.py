@@ -1155,7 +1155,7 @@ class EvidenceCacheTests(unittest.IsolatedAsyncioTestCase):
             factual_evidence.EVIDENCE_CACHE_TTL_SECONDS = 180.0
 
 
-class NumericEvidenceRelevanceTests(unittest.TestCase):
+class NumericEvidenceRelevanceTests(unittest.IsolatedAsyncioTestCase):
     async def test_numeric_fact_in_unrelated_sentence_does_not_pass_gate(self):
         wikipedia = {
             "title": "Jupiter",
