@@ -25,5 +25,7 @@ jobs:
           node-version: 22
       - name: Check JavaScript syntax
         run: npm run check
+      - name: Check installer shell syntax
+        run: bash -n deploy/install-user-service.sh
       - name: Run unit and API tests
         run: npm test
