@@ -9,6 +9,7 @@ import { getSystemSnapshot, getServiceSnapshot, getContainerSnapshot, performSer
 const ROOT = fileURLToPath(new URL("../public/", import.meta.url));
 const PORT = Number(process.env.PORT || 8787);
 const sessions = new Map();
+const lastActionAt = new Map();
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 const APP_ID = process.env.DISCORD_APPLICATION_ID || "";
 
@@ -38,6 +39,12 @@ function hasSameOrigin(req) {
   const origin = req.headers.origin;
   if (typeof origin !== "string" || typeof req.headers.host !== "string") return false;
   try { return new URL(origin).host === req.headers.host; } catch { return false; }
+}
+function enforceActionCooldown(userId) {
+  const now = Date.now();
+  const previous = lastActionAt.get(userId) || 0;
+  if (now - previous < 1200) throw Object.assign(new Error("Please wait a moment before another control action."), { status: 429 });
+  lastActionAt.set(userId, now);
 }
 function getSession(req) {
   const sid = cookieValue(req.headers.cookie, "nexus_sid");
@@ -121,6 +128,7 @@ export function createAppServer() {
         }
         if (req.method === "POST" && url.pathname === "/api/services/action") {
           const { serviceId, action } = await readJson(req, 4096);
+          enforceActionCooldown(session.userId);
           const result = await performServiceAction(serviceId, action);
           console.info(JSON.stringify({ event: "authorized_control", userId: session.userId, kind: "service", serviceId, action }));
           return send(res, 200, result);
@@ -130,6 +138,7 @@ export function createAppServer() {
         }
         if (req.method === "POST" && url.pathname === "/api/containers/action") {
           const { containerId, action } = await readJson(req, 4096);
+          enforceActionCooldown(session.userId);
           const result = await performContainerAction(containerId, action);
           console.info(JSON.stringify({ event: "authorized_control", userId: session.userId, kind: "container", containerId: result.containerId, action }));
           return send(res, 200, result);
