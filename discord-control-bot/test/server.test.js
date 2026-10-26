@@ -45,3 +45,18 @@ test("AI model and chat endpoints require an authenticated Discord session", asy
     assert.equal(chat.status, 401);
   });
 });
+
+test("control mutations reject cross-origin requests before authentication", async () => {
+  await withServer(async base => {
+    const response = await fetch(base + "/api/services/action", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "origin": "https://untrusted.example",
+      },
+      body: JSON.stringify({ serviceId: "docker", action: "restart" }),
+    });
+    assert.equal(response.status, 403);
+    assert.match((await response.json()).error, /Cross-origin/);
+  });
+});
