@@ -9,7 +9,7 @@ A private Discord Activity web app for monitoring a Linux host and safely managi
 - Server-side allowlist validation against `DISCORD_ALLOWED_USER_ID`; every private API route re-checks the authenticated session identity.
 - Read-only system metrics: sampled CPU utilization, memory, root filesystem usage, uptime, network interface names, and top processes.
 - Read-only inventory of known Nexus systemd services and Docker containers.
-- Confirmed start/stop/restart actions for a fixed allowlist of services and containers. No arbitrary shell endpoint exists.
+- Confirmed start/stop/restart actions for a fixed allowlist of services and containers, with server-side origin checks and per-user action cooldown. No arbitrary shell endpoint exists.
 - System service actions use `sudo -n` and fail closed unless the host has narrowly scoped sudo permissions. User service actions require a working user systemd session. Docker actions require Docker access for the server process.
 - Tests cover authorization, API boundaries, metric shape, inventory shape, and input validation.
 
