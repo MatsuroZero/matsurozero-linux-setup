@@ -28,3 +28,11 @@ test("container inventory is read-only and bounded", async () => {
   assert.ok(result.containers.length <= 100);
   assert.ok(result.containers.every(container => typeof container.id === "string" && typeof container.name === "string"));
 });
+
+test("control action validators reject unknown targets and unsupported actions", async () => {
+  const { validateServiceAction, validateContainerAction } = await import("../src/control.js");
+  assert.throws(() => validateServiceAction("arbitrary", "restart"), error => error.status === 400);
+  assert.throws(() => validateServiceAction("docker", "exec"), error => error.status === 400);
+  assert.throws(() => validateContainerAction("name; arbitrary command", "start"), error => error.status === 400 || error.status === undefined);
+  assert.throws(() => validateContainerAction("valid-name", "exec"), error => error.status === 400);
+});
