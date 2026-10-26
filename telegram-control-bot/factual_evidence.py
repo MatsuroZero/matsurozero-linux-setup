@@ -247,7 +247,7 @@ def _question_requests_numeric_fact(question):
         r"\bhow many\b", r"\bhow much\b", r"\bwhat year\b",
         r"\bwhich year\b", r"\bwhat date\b", r"\bwhich date\b",
         r"\bwhat percentage\b", r"\bwhat percent\b",
-        r"\bwhat temperature\b", r"\bhow old\b",
+        r"\bwhat temperature\b", r"\bat what temperature\b", r"\bhow old\b",
         r"\bwhat is the population\b", r"\bhow far\b", r"\bhow long\b",
     )
     return any(re.search(pattern, text) for pattern in patterns)
