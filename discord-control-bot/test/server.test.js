@@ -32,3 +32,16 @@ test("unknown API routes never fall through to static files", async () => {
     assert.equal(response.status, 401);
   });
 });
+
+test("AI model and chat endpoints require an authenticated Discord session", async () => {
+  await withServer(async base => {
+    const models = await fetch(base + "/api/ai/models");
+    assert.equal(models.status, 401);
+    const chat = await fetch(base + "/api/ai/chat", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ provider: "ollama", model: "qwen3:0.6b", message: "hello" }),
+    });
+    assert.equal(chat.status, 401);
+  });
+});
