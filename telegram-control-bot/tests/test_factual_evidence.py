@@ -18,6 +18,11 @@ class EvidenceRoutingTests(unittest.TestCase):
             )
         )
 
+    def test_conversational_research_request_uses_external_retrieval(self):
+        question = "Can you tell me the capital of Japan and provide me some great sources for my research"
+        self.assertTrue(factual_evidence.should_retrieve_factual_evidence(question))
+        self.assertEqual(factual_evidence._retrieval_query(question), "the capital of Japan")
+
     def test_personal_context_is_not_sent_to_external_source(self):
         for question in (
             "What is my favorite game?",
