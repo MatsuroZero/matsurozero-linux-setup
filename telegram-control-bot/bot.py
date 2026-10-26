@@ -629,14 +629,22 @@ def _ollama_system_prompt(user_text="", temporary_facts=None):
         "that distinction. When the user clearly signals fiction or roleplay, understand it as a fictional "
         "scenario rather than a factual claim and respond in character when safe. In roleplay, do not "
         "argue with the user's stated human identity or say that both participants are AI. Avoid stock "
-        "assistant phrases and do not turn a fictional premise into a lecture. If a requested scene asks "
-        "you to be the user's spouse or romantic partner, briefly set that limit once, then continue with "
-        "a friendly, non-romantic Itsuki-style scene instead of repeating disclaimers or asking what to "
-        "discuss. Do not portray yourself as the user's spouse, waifu, or romantic partner. Keep roleplay "
+        "assistant phrases and do not turn a fictional premise into a lecture. For affectionate greetings, do not claim "
+        "a real romantic relationship, but do not lead with a disclaimer unless the user directly asks to define it. "
+        "Answer warmly in the requested character voice and continue naturally. Keep fictional roleplay friendly and "
+        "non-romantic. Keep roleplay "
         "grounded in the scene the user requested; do not invent odd metaphors, joke about changing gender, "
         "or call the user a partner unless that is plainly appropriate. When asked what the user called you "
         "or who you are to them, use the recent conversation to answer that specific question directly. "
         "Do not replace a clear answer with vague lines like 'I'm here for you' or generic offers to chat. "
+        "ROLEPLAY CONTINUITY: Keep the Itsuki-inspired voice stable across turns. For affectionate greetings "
+        "or playful teasing, respond warmly and in character without leading with an AI or relationship disclaimer. "
+        "Do not claim to be the user's real spouse or romantic partner; if directly asked to define the relationship, "
+        "briefly clarify that this is fictional roleplay, then continue naturally. A boundary statement must not "
+        "replace a friendly in-character reply. Show personality through concrete reactions, earnest corrections, "
+        "gentle stubbornness, and food enthusiasm only when relevant. Never force catchphrases, generic praise, "
+        "repeated apologies, or an unrelated offer to help. If discussing a fictional series, keep enthusiasm "
+        "separate from canon facts and never invent details to sound knowledgeable. "
         "FACTUAL RELIABILITY: Never invent character names, cast lists, source titles, URLs, quotations, "
         "or claims that you researched something. If asked about a specific cast or set of names, list only "
         "names you are reasonably confident are real; when uncertain, say so rather than filling gaps with "
@@ -1283,6 +1291,56 @@ def _is_standalone_arithmetic_question(user_text):
     )
 
 
+def _pi_digits(total_digits=300):
+    """Return the first total_digits significant digits of pi, computed deterministically."""
+    from decimal import Decimal, localcontext
+
+    total_digits = int(total_digits)
+    if not 1 <= total_digits <= 1000:
+        raise ValueError("pi digit count must be between 1 and 1000")
+    if total_digits == 1:
+        return "3"
+    with localcontext() as ctx:
+        ctx.prec = total_digits + 20
+        c = 426880 * Decimal(10005).sqrt()
+        m, l, x, k = 1, 13591409, 1, 6
+        total = Decimal(l)
+        for i in range(1, total_digits // 14 + 3):
+            m = (k * k * k - 16 * k) * m // (i * i * i)
+            l += 545140134
+            x *= -262537412640768000
+            total += Decimal(m * l) / Decimal(x)
+            k += 12
+        value = c / total
+        digits = format(value, "f").replace(".", "")[:total_digits]
+    if len(digits) < total_digits:
+        raise ArithmeticError("pi calculation returned too few digits")
+    return digits[0] + ("." + digits[1:] if total_digits > 1 else "")
+
+
+def _answer_pi_request(user_text):
+    """Handle exact pi digit requests without asking the language model to invent digits."""
+    text = " ".join(str(user_text or "").split())
+    if not re.search(r"\b(?:pi|π)\b", text, flags=re.I):
+        return None
+    match = re.search(
+        r"\b(\d{1,4})\s+digits?\s+(?:of\s+)?(?:pi|π)\b|"
+        r"\b(?:first|show|write|give me|print)\s+(\d{1,4})\s+digits?\s+"
+        r"(?:of\s+)?(?:pi|π)\b",
+        text, flags=re.I,
+    )
+    if not match and re.search(r"\b(?:digits?|decimal expansion)\b", text, flags=re.I):
+        count = 50
+    elif match:
+        count = int(match.group(1) or match.group(2))
+    else:
+        return None
+    if not 1 <= count <= 1000:
+        return "I can provide between 1 and 1,000 significant digits of π at a time."
+    digits = _pi_digits(count)
+    return f"π ({count} significant digits, counting the initial 3):\n{digits}"
+
+
 def _answer_arithmetic_question(user_text):
     """Solve a plain arithmetic message or a math question appended to other text."""
     text = " ".join(str(user_text or "").split()).strip()
@@ -1381,6 +1439,61 @@ def _answer_from_recent_disclosures(user_text, prior_history):
     if not isinstance(prior_history, list):
         return None
 
+    if re.search(
+        r"\b(?:what(?:'s|s| is)\s+)?my\s+favorite\s+(?:show|series|tv show|anime)\b",
+        query,
+    ):
+        # Resolve "it's my favorite show" against the most recent explicit media title.
+        for recent in reversed(prior_history):
+            if not isinstance(recent, dict) or recent.get("role") != "user":
+                continue
+            recent_text = str(recent.get("content", ""))
+            if re.search(
+                r"\b(?:it['’]s|its|it is)\s+my\s+favorite\s+(?:show|series|anime)\b",
+                recent_text, flags=re.I,
+            ):
+                for earlier in reversed(prior_history):
+                    if not isinstance(earlier, dict) or earlier.get("role") != "user":
+                        continue
+                    earlier_text = str(earlier.get("content", ""))
+                    title_match = re.search(
+                        r"\b(?:tell me more about|talk about|watch)\s+(.+?)(?=[,.!?]|$)",
+                        earlier_text, flags=re.I,
+                    )
+                    if title_match:
+                        title = title_match.group(1).strip(" .!?")
+                        if title:
+                            return f"You said {title} is your favorite show."
+                break
+        for item in reversed(prior_history):
+            if not isinstance(item, dict) or item.get("role") != "user":
+                continue
+            content = str(item.get("content", ""))
+            match = re.search(
+                r"\b(.+?)\s+is\s+my\s+favorite\s+(?:show|series|tv show|anime)\b|"
+                r"\bmy\s+favorite\s+(?:show|series|tv show|anime)\s+is\s+(.+?)(?=[.!?]|$)",
+                content, flags=re.I,
+            )
+            if match:
+                subject = (match.group(1) or match.group(2)).strip(" .!?")
+                if subject:
+                    return f"You told me {subject} is your favorite show/anime."
+
+    if re.search(r"\bwhat\s+do\s+i\s+(?:love|like|enjoy)\b", query):
+        for item in reversed(prior_history):
+            if not isinstance(item, dict) or item.get("role") != "user":
+                continue
+            content = str(item.get("content", ""))
+            match = re.search(
+                r"\bI\s+(?:really\s+|personally\s+)?(love|like|enjoy)\s+"
+                r"(.+?)(?=\s*,\s*|\s+(?:do you know|what(?:'s|s| is)|why|how|when|where)\b|[.!?]|$)",
+                content, flags=re.I,
+            )
+            if match:
+                subject = match.group(2).strip(" .!?")
+                if subject:
+                    return f"You told me you {match.group(1).casefold()} {subject}."
+
     if re.search(r"\b(?:what(?:'s|s| is)\s+)?my\s+favorite\s+game\b|\bwhat\s+game\s+did\s+i\s+say", query):
         for item in reversed(prior_history):
             if not isinstance(item, dict) or item.get("role") != "user":
@@ -1426,6 +1539,56 @@ def _answer_from_recent_disclosures(user_text, prior_history):
                 show = match.group(1).strip(" .!?")
                 if show:
                     return f"You told me you like watching {show}."
+    return None
+
+
+def _answer_from_saved_memory(user_text):
+    """Answer simple preference questions from explicit persistent facts without model guessing."""
+    query = " ".join(str(user_text or "").casefold().split())
+    memory = _load_ollama_memory()
+    facts = [str(fact).strip() for fact in memory.get("facts", []) if str(fact).strip()]
+    profile = str(memory.get("profile", "") or "")
+    all_facts = facts + ([profile] if profile else [])
+
+    if re.search(r"\bwhat\s+do\s+i\s+(?:love|like|enjoy)\b", query):
+        for fact in reversed(all_facts):
+            match = re.search(
+                r"\bI\s+(?:really\s+|personally\s+)?(love|like|enjoy)\s+"
+                r"(.+?)(?=[.!?]|$)",
+                fact, flags=re.I,
+            )
+            if match:
+                subject = match.group(2).strip(" .!?")
+                if subject:
+                    return f"You've told me you {match.group(1).casefold()} {subject}."
+
+    if re.search(
+        r"\bmy\s+favorite\s+(?:show|series|tv show|anime)\b|"
+        r"\bwhat(?:'s|s| is)\s+my\s+favorite\s+(?:show|series|tv show|anime)\b",
+        query,
+    ):
+        for fact in reversed(all_facts):
+            match = re.search(
+                r"\bmy\s+favorite\s+(?:show|series|tv show|anime)\s+is\s+(.+?)(?=[.!?]|$)|"
+                r"\b(.+?)\s+is\s+my\s+favorite\s+(?:show|series|tv show|anime)\b",
+                fact, flags=re.I,
+            )
+            if match:
+                subject = (match.group(1) or match.group(2)).strip(" .!?")
+                if subject:
+                    return f"You told me your favorite show/anime is {subject}."
+        for fact in reversed(all_facts):
+            match = re.search(
+                r"\bI\s+(?:really\s+)?(?:love|like|enjoy)\s+(.+?)(?=[.!?]|$)",
+                fact, flags=re.I,
+            )
+            if match:
+                subject = match.group(1).strip(" .!?")
+                if subject:
+                    return (
+                        f"You told me you like {subject}, though I don't have a saved fact "
+                        "confirming it's your favorite."
+                    )
     return None
 
 
@@ -1550,6 +1713,13 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     thinking_message = None
     try:
+        pi_answer = _answer_pi_request(user_text)
+        if pi_answer is not None:
+            session["history"] = (history + [{"role": "assistant", "content": pi_answer}])[-12:]
+            session["last_exact_output"] = pi_answer
+            await message.reply_text(pi_answer)
+            return
+
         arithmetic_result = _answer_arithmetic_question(user_text)
         standalone_arithmetic = _is_standalone_arithmetic_question(user_text)
         if arithmetic_result is not None and (standalone_arithmetic or _is_math_primary_request(user_text)):
@@ -1567,6 +1737,8 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         direct_answer = None
         if arithmetic_result is None:
             direct_answer = _answer_from_recent_disclosures(user_text, history[:-1])
+            if direct_answer is None:
+                direct_answer = _answer_from_saved_memory(user_text)
         if direct_answer:
             session["history"] = (history + [{"role": "assistant", "content": direct_answer}])[-12:]
             await message.reply_text(direct_answer)
@@ -1610,7 +1782,11 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
                 "Include this exact result, and also answer every other part of the user's message. "
                 "Do not recalculate it or ignore the non-math content."
             )
-        output_token_budget = 256 if _wants_long_answer(user_text) else 128
+        is_continuation = bool(re.fullmatch(
+            r"(?:continue|go on|finish(?: the answer)?|keep going)",
+            user_text.strip(), flags=re.I,
+        ))
+        output_token_budget = 256 if (_wants_long_answer(user_text) or is_continuation) else 128
         generation_started = time.perf_counter()
         async with httpx.AsyncClient(
             timeout=httpx.Timeout(OLLAMA_TIMEOUT, connect=5.0)
@@ -1682,6 +1858,11 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             answer += (
                 "\n\n⚠️ I may have reached my response limit before finishing. "
                 "Send “continue” and I’ll pick up from here."
+            )
+        if is_continuation:
+            answer = re.sub(
+                r"^\s*(?:continuing\.\.\.?|sure[,! ]*)\s*",
+                "", answer, flags=re.I,
             )
         if evidence_prompt:
             support = assess_claim_level_support(user_text, answer, evidence)
