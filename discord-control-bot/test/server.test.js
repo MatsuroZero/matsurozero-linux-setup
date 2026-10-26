@@ -94,3 +94,16 @@ test("dashboard links and credential reveal require an authenticated session", a
     assert.equal(credentials.status, 401);
   });
 });
+
+test("Nexus registry APIs require an authenticated session", async () => {
+  await withServer(async base => {
+    const response = await fetch(base + "/api/registry");
+    assert.equal(response.status, 401);
+    const run = await fetch(base + "/api/commands/run", {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: new URL(base).origin },
+      body: JSON.stringify({ name: "unregistered" }),
+    });
+    assert.equal(run.status, 401);
+  });
+});
