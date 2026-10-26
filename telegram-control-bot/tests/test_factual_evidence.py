@@ -179,7 +179,7 @@ class MultiSourceRelevanceTests(unittest.IsolatedAsyncioTestCase):
     async def test_numeric_question_rejects_relevant_passage_without_a_value(self):
         wikipedia = {
             "title": "Planet X",
-            "excerpt": "Planet X is a distant planet with several natural satellites.",
+            "excerpt": "Planet X has moons, but the exact count is not stated.",
             "url": "https://en.wikipedia.org/?curid=444",
             "source": "Wikipedia article extract",
         }
