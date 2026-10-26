@@ -934,8 +934,9 @@ def format_multi_source_attribution(evidence):
         url = str(item.get("url") or "").strip()
         if not title or url in seen or not _is_allowed_source_url(url):
             continue
+        hostname = urlparse(url).hostname
         source = str(item.get("source") or (
-            "Wikipedia" if parsed.hostname == "en.wikipedia.org" else "Stack Overflow"
+            "Wikipedia" if hostname == "en.wikipedia.org" else "Stack Overflow"
         ))
         references.append("\\n• " + source + " — " + title + "\\n" + url)
         seen.add(url)
