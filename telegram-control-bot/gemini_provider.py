@@ -13,7 +13,7 @@ class GeminiProvider:
         if not api_key or not api_key.strip():
             raise GeminiProviderError("GEMINI_API_KEY is not configured.")
         self.api_key = api_key.strip()
-        self.base_url = base_url.rstrip("/")
+        self.base_url = base_url.rstrip("/") + "/"
         self.timeout = timeout
 
     def _client(self):
