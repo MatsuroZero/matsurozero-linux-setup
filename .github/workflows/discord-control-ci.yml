@@ -7,7 +7,7 @@ on:
       - "discord-control-bot/**"
       - ".github/workflows/discord-control-ci.yml"
   push:
-    branches: [main, discord-nexus-unified]
+    branches: [main, discord-nexus-unified, discord-nexus-build]
     paths:
       - "discord-control-bot/**"
       - ".github/workflows/discord-control-ci.yml"
