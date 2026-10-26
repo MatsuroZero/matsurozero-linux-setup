@@ -490,6 +490,31 @@ class EvidenceFormattingTests(unittest.TestCase):
         )
         self.assertEqual(result["status"], "candidate_supported")
 
+    def test_answer_about_wrong_numeric_property_is_rejected(self):
+        evidence = {
+            "title": "Jupiter",
+            "excerpt": "Jupiter has a diameter of 139820 km. Jupiter has 95 moons.",
+        }
+        result = factual_evidence.assess_answer_support(
+            "How many moons does Jupiter have?",
+            "Jupiter has a diameter of 139820 km.",
+            evidence,
+        )
+        self.assertEqual(result["status"], "insufficient_overlap")
+        self.assertEqual(result["reason"], "requested_metric_not_addressed")
+
+    def test_answer_about_requested_numeric_property_is_allowed(self):
+        evidence = {
+            "title": "Jupiter",
+            "excerpt": "Jupiter has a diameter of 139820 km. Jupiter has 95 moons.",
+        }
+        result = factual_evidence.assess_answer_support(
+            "How many moons does Jupiter have?",
+            "Jupiter has 95 moons.",
+            evidence,
+        )
+        self.assertEqual(result["status"], "candidate_supported")
+
     def test_number_word_and_digit_are_equivalent_in_support_check(self):
         evidence = {
             "title": "Planet X",
