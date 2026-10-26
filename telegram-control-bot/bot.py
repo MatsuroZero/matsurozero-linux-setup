@@ -1850,35 +1850,49 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         ))
         output_token_budget = 256 if (_wants_long_answer(user_text) or is_continuation) else 128
         generation_started = time.perf_counter()
-        async with httpx.AsyncClient(
-            timeout=httpx.Timeout(OLLAMA_TIMEOUT, connect=5.0)
-        ) as client:
-            response = await client.post(
-                f"{OLLAMA_BASE_URL}/api/chat",
-                json={
-                    "model": session["model"],
-                    "messages": [{"role": "system", "content": system_prompt}] + history,
-                    "stream": False,
-                    "keep_alive": "10m",
-                    "think": False,
-                    "options": {
-                        # Keep output bounded for the CPU-only i3-class host.
-                        # Fewer generated tokens mean shorter wait times on local models.
-                        "num_ctx": 2048,
-                        # Routine replies stay short; explicit research/detail requests
-                        # get more room without slowing every ordinary conversation.
-                        "num_predict": output_token_budget,
-                        "temperature": 0.58,
-                        "top_p": 0.85,
-                        "top_k": 30,
-                        "repeat_penalty": 1.15,
-                        "presence_penalty": 0.25,
-                    },
-                },
+        provider_name = session.get("provider", "ollama")
+        if provider_name == "gemini":
+            provider = GeminiProvider(GEMINI_API_KEY, base_url=GEMINI_BASE_URL, timeout=GEMINI_TIMEOUT)
+            payload = await provider.chat(
+                model=session["model"],
+                messages=[{"role": "system", "content": system_prompt}] + history,
+                max_tokens=max(512, output_token_budget),
             )
-            response.raise_for_status()
-            payload = response.json()
-        generation_wall_seconds = time.perf_counter() - generation_started
+            answer = str(payload.get("choices", [{}])[0].get("message", {}).get("content", "") or "").strip()
+            generation_wall_seconds = time.perf_counter() - generation_started
+            eval_count = eval_duration = prompt_eval_count = prompt_eval_duration = load_duration = 0
+            tokens_per_second = 0.0
+            done_reason = str(payload.get("choices", [{}])[0].get("finish_reason") or "").casefold()
+            hit_output_limit = done_reason in {"length", "max_tokens"}
+        else:
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(OLLAMA_TIMEOUT, connect=5.0)
+            ) as client:
+                response = await client.post(
+                    f"{OLLAMA_BASE_URL}/api/chat",
+                    json={
+                        "model": session["model"],
+                        "messages": [{"role": "system", "content": system_prompt}] + history,
+                        "stream": False, "keep_alive": "10m", "think": False,
+                        "options": {
+                            "num_ctx": 2048, "num_predict": output_token_budget,
+                            "temperature": 0.58, "top_p": 0.85, "top_k": 30,
+                            "repeat_penalty": 1.15, "presence_penalty": 0.25,
+                        },
+                    },
+                )
+                response.raise_for_status()
+                payload = response.json()
+            generation_wall_seconds = time.perf_counter() - generation_started
+            eval_count = payload.get("eval_count", 0) or 0
+            eval_duration = payload.get("eval_duration", 0) or 0
+            prompt_eval_count = payload.get("prompt_eval_count", 0) or 0
+            prompt_eval_duration = payload.get("prompt_eval_duration", 0) or 0
+            load_duration = payload.get("load_duration", 0) or 0
+            tokens_per_second = eval_count * 1_000_000_000 / eval_duration if eval_duration > 0 else 0.0
+            answer = payload.get("message", {}).get("content", "").strip()
+            done_reason = str(payload.get("done_reason") or "").casefold()
+            hit_output_limit = done_reason in {"length", "max_tokens"} or (eval_count >= output_token_budget and eval_count > 0)
         # Ollama reports nanosecond timings and token counts. Record them so
         # performance tuning is based on this PC's real throughput, not guesses.
         eval_count = payload.get("eval_count", 0) or 0
@@ -1891,7 +1905,7 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             if eval_duration > 0 else 0.0
         )
         log.info(
-            "Ollama performance model=%s wall=%.2fs load=%.2fs "
+            "AI performance provider=%s model=%s wall=%.2fs load=%.2fs "
             "prompt_eval=%.2fs/%s tokens generation=%.2fs/%s tokens (%.2f tok/s)",
             session["model"],
             generation_wall_seconds,
@@ -1904,7 +1918,7 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         )
         answer = payload.get("message", {}).get("content", "").strip()
         if not answer:
-            raise RuntimeError("Ollama returned no response text.")
+            raise RuntimeError("Selected AI provider returned no response text.")
         done_reason = str(payload.get("done_reason") or "").casefold()
         hit_output_limit = done_reason in {"length", "max_tokens"} or (
             eval_count >= output_token_budget and eval_count > 0
@@ -1962,7 +1976,7 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         raise
     except (httpx.HTTPError, RuntimeError, ValueError) as exc:
         if CHAT_SESSIONS.get(key) is session:
-            await message.reply_text(f"⚠️ Ollama request failed: {str(exc)[:700]}")
+            await message.reply_text(f"⚠️ AI provider request failed: {str(exc)[:700]}")
     finally:
         if thinking_message is not None:
             try:
