@@ -153,7 +153,7 @@ const PROJECTS = [
 ];
 const PROJECT_BY_ID = new Map(PROJECTS.map(project => [project.id, project]));
 const SERVICE_BY_ID = new Map(SERVICES.map(service => [service.id, service]));
-const SERVICE_ACTIONS = new Set(["start", "stop", "restart"]);
+const SERVICE_ACTIONS = new Set(["start", "stop", "restart", "enable", "disable"]);
 const CONTAINER_ACTIONS = new Set(["start", "stop", "restart"]);
 
 export function validateServiceAction(serviceId, action) {
@@ -209,10 +209,18 @@ export async function performContainerAction(containerId, action) {
 
 export async function getServiceSnapshot() {
   return Promise.all(SERVICES.map(async service => {
-    const args = service.scope === "user" ? ["--user", "is-active", service.unit] : ["is-active", service.unit];
-    const result = await runReadOnly("systemctl", args);
-    const state = result.stdout || result.error || "unknown";
-    return { ...service, state: ["active", "inactive", "failed", "activating", "deactivating", "unknown", "not-installed", "unavailable"].includes(state) ? state : "unknown" };
+    const prefix = service.scope === "user" ? ["--user"] : [];
+    const [activeResult, enabledResult] = await Promise.all([
+      runReadOnly("systemctl", [...prefix, "is-active", service.unit]),
+      runReadOnly("systemctl", [...prefix, "is-enabled", service.unit]),
+    ]);
+    const state = activeResult.stdout || activeResult.error || "unknown";
+    const autostart = enabledResult.stdout || enabledResult.error || "unknown";
+    return {
+      ...service,
+      state: ["active", "inactive", "failed", "activating", "deactivating", "unknown", "not-installed", "unavailable"].includes(state) ? state : "unknown",
+      autostart: ["enabled", "disabled", "static", "masked", "indirect", "generated", "transient", "not-installed", "unavailable", "unknown"].includes(autostart) ? autostart : "unknown",
+    };
   }));
 }
 export async function getContainerSnapshot() {
