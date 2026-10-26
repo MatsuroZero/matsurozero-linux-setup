@@ -47,13 +47,14 @@ To monitor your CachyOS PC, run this server on that PC. When run elsewhere, the 
 ## Still to implement
 
 1. Verify Activity launch in DMs/private channels on the actual Discord client and complete the Developer Portal URL mapping.
-2. Finish parity gaps: persistent AI memory/profile/remember/forget, dashboard credential reveal with the existing PIN flow, and Nexus custom command/profile/doctor/health workflows.
+2. Finish parity gaps in Nexus custom command/profile execution, health/doctor reports, and service/Docker autostart workflows.
 3. Extract common control logic so Telegram, Nexus CLI, and Discord share one implementation rather than drift.
 4. Verify the GitHub Actions run. The workflow exists on main and the build branch, but the connected GitHub run-list action only returns PR-triggered runs; no successful run is verified yet.
 
 ## Security
 
 - Keep the Discord bot token server-side only. Never send it to the browser or commit it.
+- Set a private `LINKS_PIN` before using credential reveal. The PIN is never logged, is checked server-side, and three failed attempts trigger a five-minute lockout. Dashboard credentials are only returned after successful authentication and PIN verification.
 - Rotate any still-active credentials hard-coded in historical repositories.
 - Keep `.env` untracked and never commit client secrets or bridge secrets.
 - All service/container actions use fixed operation allowlists and argument arrays, not a shell. Review the sudoers configuration carefully; do not grant broad passwordless sudo.
