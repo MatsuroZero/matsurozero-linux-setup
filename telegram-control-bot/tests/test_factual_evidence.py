@@ -280,6 +280,16 @@ class SourceUrlValidationTests(unittest.TestCase):
 
 
 class EvidenceFormattingTests(unittest.TestCase):
+    def test_prompt_forbids_invented_source_urls(self):
+        prompt = factual_evidence.format_multi_source_evidence_for_prompt({
+            "title": "Tokyo",
+            "excerpt": "Tokyo is the capital of Japan.",
+            "url": "https://en.wikipedia.org/?curid=123",
+            "source": "Wikipedia article extract",
+        })
+        self.assertIn("use only the exact URLs provided above", prompt)
+        self.assertIn("Never invent a URL", prompt)
+
     def test_prompt_formats_excerpt_as_untrusted_candidate_evidence(self):
         prompt = factual_evidence.format_evidence_for_prompt({
             "title": "Canberra",
