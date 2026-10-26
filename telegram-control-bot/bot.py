@@ -1294,6 +1294,26 @@ def _wants_long_answer(user_text):
     ))
 
 
+def _format_math_response(user_text, result):
+    """Format common integer multiplication as a worked, deterministic result."""
+    text = " ".join(str(user_text or "").split())
+    match = re.search(r"(?<!\w)(\d[\d,]*)\s*\*\s*(\d[\d,]*)(?!\w)", text)
+    if match:
+        try:
+            left, right = (int(part.replace(",", "")) for part in match.groups())
+            if left >= 0 and right >= 10 and right % 10:
+                tens, ones = (right // 10) * 10, right % 10
+                return (
+                    f"{left:,} × {right:,} = {left:,} × ({tens:,} + {ones}) = "
+                    f"{left * tens:,} + {left * ones:,} = {int(result):,}."
+                )
+            if left >= 0 and right >= 0:
+                return f"{left:,} × {right:,} = {int(result):,}."
+        except (ValueError, TypeError):
+            pass
+    return f"The answer is {result}."
+
+
 def _answer_from_recent_disclosures(user_text, prior_history):
     """Answer simple recall questions from explicit recent user statements, without guessing."""
     query = " ".join(str(user_text or "").casefold().split())
@@ -1448,7 +1468,7 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         if arithmetic_result is not None and (standalone_arithmetic or _is_math_primary_request(user_text)):
             direct_math_answer = (
                 arithmetic_result if standalone_arithmetic
-                else f"The answer is {arithmetic_result}."
+                else _format_math_response(user_text, arithmetic_result)
             )
             session["history"] = (history + [{"role": "assistant", "content": direct_math_answer}])[-12:]
             await message.reply_text(direct_math_answer)
