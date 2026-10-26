@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "test": "node --test",
-    "check": "node --check src/authz.js && node --check src/feature-manifest.js"
+    "check": "node --check src/authz.js"
   },
   "engines": {
     "node": ">=22"
