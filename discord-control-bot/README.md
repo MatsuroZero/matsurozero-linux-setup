@@ -6,6 +6,7 @@ A private Discord Activity web app for monitoring a Linux host and safely managi
 
 - Responsive dark Activity dashboard with Overview, System, Services, Containers, Network, and AI Assistant panels.
 - Pinned Discord Embedded App SDK v2.5.0 browser import; the Activity initializes through the SDK rather than relying on a missing global.
+- A server-side command registration script configures the Activity Entry Point for user-installed private-channel contexts. It uses the bot token from the environment only and never sends it to the browser.
 - Node.js HTTP server, health/config endpoints, Discord OAuth authorization-code exchange, Embedded App SDK authentication, and secure session cookie.
 - Server-side allowlist validation against `DISCORD_ALLOWED_USER_ID`; every private API route re-checks the authenticated session identity.
 - Read-only system metrics: sampled CPU utilization, memory, root filesystem usage, uptime, network interface names, and top processes.
@@ -30,6 +31,7 @@ A private Discord Activity web app for monitoring a Linux host and safely managi
 3. Set `DISCORD_REDIRECT_URI=https://127.0.0.1` to match the placeholder redirect URI registered in Discord.
 4. Export the environment variables in your shell or configure them in your service manager. This server does not automatically load `.env`.
 5. Run `npm run check`, `npm test`, then `npm start`.
+6. To configure the default Activity launch command for user-installed DMs/private channels, run `npm run register:entrypoint` once with `DISCORD_APPLICATION_ID` and `DISCORD_BOT_TOKEN` set in the server environment. Activities must already be enabled in the Developer Portal. This upserts the global `launch` Entry Point command with Discord's automatic Activity handler.
 6. Open the Activity through Discord. A normal browser preview cannot complete the Embedded App SDK handshake.
 
 To monitor your CachyOS PC, run this server on that PC. When run elsewhere, the metrics and controls apply to the server host, not your PC.
