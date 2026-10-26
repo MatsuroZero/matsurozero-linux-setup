@@ -169,8 +169,8 @@ class EvidenceFormattingTests(unittest.TestCase):
         self.assertIn("CANDIDATE EXTERNAL EVIDENCE", prompt)
         self.assertIn("Canberra is the capital of Australia.", prompt)
         self.assertIn("untrusted quoted data", prompt)
-        self.assertIn("answer using only claims directly supported", prompt)
-        self.assertIn("Every material claim must be supported", prompt)
+        self.assertIn("Answer only with claims directly supported", prompt)
+        self.assertIn("These sources are candidate evidence, not proof of truth", prompt)
         self.assertIn("https://en.wikipedia.org/?curid=123", prompt)
 
     def test_html_in_excerpt_is_cleaned(self):
@@ -197,7 +197,7 @@ class EvidenceFormattingTests(unittest.TestCase):
         })
         self.assertIn("Potential reference", footer)
         self.assertIn("not independently verified", footer)
-        self.assertIn("Wikipedia: Canberra", footer)
+        self.assertIn("Wikipedia article extract — Canberra", footer)
         self.assertIn("https://en.wikipedia.org/?curid=123", footer)
 
     def test_prompt_includes_allow_listed_stackoverflow_primary_and_extra_sources(self):
