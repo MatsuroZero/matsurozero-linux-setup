@@ -6,7 +6,7 @@ A private Discord Activity dashboard for monitoring and controlling the Linux ho
 
 - Responsive Activity UI with Overview, System, Services, Containers, Network, AI Assistant, Dashboards, Nexus Commands, Diagnostics, and Power Controls.
 - Discord Embedded App SDK browser import, server-side OAuth code exchange, secure session cookie, and strict allowlist checks against `DISCORD_ALLOWED_USER_ID`.
-- Read-only CPU, memory, root disk, uptime, top processes, Linux thermal zones when exposed, network interfaces, and sampled RX/TX throughput.
+- Read-only CPU, memory, root disk, uptime, top processes, Linux thermal zones when exposed, network interfaces, and sampled RX/TX throughput. The Activity refreshes these metrics every 10 seconds while visible, without overlapping refreshes.
 - Fixed allowlist of systemd services, status/autostart state, start/stop/restart, and enable/disable autostart actions.
 - Fixed Docker container inventory and start/stop/restart/log actions, plus configured Compose project status/actions/logs for `odysseus`, `uptime-kuma`, and `localnexus`.
 - Confirmation-based Serpantinum lock, suspend, reboot, and shutdown actions.
