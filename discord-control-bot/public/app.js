@@ -7,7 +7,7 @@ let modelCatalog = null;
 let savedFacts = [];
 const moduleInfo = {
   overview: ["Overview", "◈"], system: ["System monitor", "⌁"], services: ["Services", "◉"],
-  containers: ["Containers", "▦"], network: ["Network", "⌘"], assistant: ["AI assistant", "✳"], links: ["Dashboards", "↗"], registry: ["Nexus commands", "⌘"], power: ["Power controls", "⏻"]
+  containers: ["Containers", "▦"], network: ["Network", "⌘"], assistant: ["AI assistant", "✳"], links: ["Dashboards", "↗"], registry: ["Nexus commands", "⌘"], diagnostics: ["Diagnostics", "✓"], power: ["Power controls", "⏻"]
 };
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
@@ -98,6 +98,19 @@ function renderContainers(data) {
     finally { button.disabled = false; }
   }));
 }
+async function refreshDiagnostics() {
+  $("#health-results").innerHTML = '<p class="muted">Checking endpoints…</p>';
+  $("#doctor-results").innerHTML = '<p class="muted">Running local checks…</p>';
+  try {
+    const [health, doctor] = await Promise.all([api("/api/health/details"), api("/api/doctor")]);
+    $("#health-summary").textContent = `HTTP endpoints: ${health.summary.ok} responding, ${health.summary.failed} failed · Docker: ${health.docker.detail}`;
+    $("#health-results").innerHTML = health.endpoints.map(item => `<div class="inventory-row"><div><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.url)}</small></div><span class="state state-${item.ok ? "active" : "failed"}">${item.status == null ? escapeHtml(item.detail) : `HTTP ${item.status}`}</span></div>`).join("");
+    $("#doctor-results").innerHTML = doctor.checks.map(item => `<div class="inventory-row"><div><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.detail)}</small></div><span class="state state-${item.state === "ok" ? "active" : "failed"}">${escapeHtml(item.state)}</span></div>`).join("");
+  } catch (error) {
+    $("#health-summary").textContent = error.message;
+  }
+}
+$("#refresh-diagnostics").addEventListener("click", refreshDiagnostics);
 function renderRegistry(data) {
   $("#registry-path").textContent = `Registry: ${data.path || "not found"}`;
   $("#saved-commands").innerHTML = data.commands.length ? data.commands.map(item => `<div class="inventory-row"><div><strong>${escapeHtml(item.name)}</strong><small>Executable: ${escapeHtml(item.executable)}</small></div><button class="action-button" data-run-command="${escapeHtml(item.name)}">Run</button></div>`).join("") : '<p class="muted">No saved commands found in the Nexus registry.</p>';
@@ -269,6 +282,7 @@ function selectView(view) {
   else if (view === "network") alert("Network interface details and sampled throughput are read-only.");
   else if (view === "links") alert("Dashboard URLs are local-network links. Credentials require the configured server PIN.");
   else if (view === "registry") alert("Only pre-registered Nexus commands and profiles are available. Each run requires confirmation.");
+  else if (view === "diagnostics") alert("Health checks and doctor results are read-only snapshots of the local host.");
   else if (view === "power") alert("Power actions affect the host and require explicit confirmation.");
   else alert("Choose an available Ollama or Gemini model. Chat history is kept for this server session.");
 }
