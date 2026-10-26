@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "test": "node --test",
-    "check": "node --check src/authz.js && node --check src/control.js && node --check src/server.js && node --check public/app.js",
+    "check": "node --check src/authz.js && node --check src/ai.js && node --check src/control.js && node --check src/server.js && node --check public/app.js",
     "start": "node src/server.js",
     "dev": "node --watch src/server.js"
   },
