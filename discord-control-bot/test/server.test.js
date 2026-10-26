@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createAppServer } from "../src/server.js";
+import { createAppServer, cookieValue } from "../src/server.js";
 
 async function withServer(run) {
   const server = createAppServer();
@@ -106,4 +106,12 @@ test("Nexus registry APIs require an authenticated session", async () => {
     });
     assert.equal(run.status, 401);
   });
+});
+
+
+test("session cookie parser handles normal cookies, equals signs, and exact names", () => {
+  assert.equal(cookieValue("theme=dark; nexus_sid=abc123; language=en", "nexus_sid"), "abc123");
+  assert.equal(cookieValue("nexus_sid=abc=123==; other=value", "nexus_sid"), "abc=123==");
+  assert.equal(cookieValue("nexus_sid_extra=wrong; other=value", "nexus_sid"), undefined);
+  assert.equal(cookieValue("other=value", "nexus_sid"), undefined);
 });
