@@ -338,3 +338,49 @@ export async function performPowerAction(action) {
     throw Object.assign(new Error("Power action failed. Check the user session and Serpantinum command availability."), { status: 503 });
   }
 }
+
+const HEALTH_ENDPOINTS = [
+  { id: "dashboard", name: "System dashboard", url: process.env.SYSTEM_DASHBOARD_HEALTH_URL || "http://127.0.0.1:7171/" },
+  { id: "jellyfin", name: "Jellyfin", url: process.env.JELLYFIN_HEALTH_URL || "http://127.0.0.1:8096/" },
+  { id: "ollama", name: "Ollama API", url: process.env.OLLAMA_HEALTH_URL || "http://127.0.0.1:11434/api/tags" },
+  { id: "uptime-kuma", name: "Uptime Kuma", url: process.env.UPTIME_KUMA_HEALTH_URL || "http://127.0.0.1:3001/" },
+];
+export async function getHealthSnapshot() {
+  const endpoints = await Promise.all(HEALTH_ENDPOINTS.map(async endpoint => {
+    try {
+      const response = await fetch(endpoint.url, { signal: AbortSignal.timeout(3500), redirect: "follow" });
+      return { id: endpoint.id, name: endpoint.name, status: response.status, ok: response.status >= 200 && response.status < 400, redirected: response.redirected, url: endpoint.url, detail: response.status >= 500 ? "Server error" : response.status >= 400 ? "Endpoint responded with a client error" : "Responding" };
+    } catch (error) {
+      return { id: endpoint.id, name: endpoint.name, status: null, ok: false, redirected: false, url: endpoint.url, detail: error.name === "TimeoutError" ? "Timed out" : "Unreachable" };
+    }
+  }));
+  const docker = await runReadOnly("docker", ["ps", "-q"], 5000);
+  return {
+    sampledAt: new Date().toISOString(),
+    endpoints,
+    docker: { available: docker.ok, detail: docker.ok ? "Docker API accessible" : docker.error === "not-installed" ? "Docker CLI not installed" : "Docker API unavailable" },
+    summary: { ok: endpoints.filter(item => item.ok).length, failed: endpoints.filter(item => !item.ok).length },
+  };
+}
+export async function getDoctorSnapshot() {
+  const checks = [];
+  const major = Number(process.versions.node.split(".")[0]);
+  checks.push({ id: "node", name: "Node.js runtime", state: major >= 22 ? "ok" : "check", detail: `v${process.versions.node}; requires v22 or newer` });
+  const docker = await runReadOnly("docker", ["ps", "-q"], 5000);
+  checks.push({ id: "docker-cli", name: "Docker CLI and API", state: docker.ok ? "ok" : "check", detail: docker.ok ? "Docker API accessible" : docker.error === "not-installed" ? "Docker CLI not installed" : "Docker API access unavailable" });
+  const [services, projects, registry] = await Promise.all([getServiceSnapshot(), getProjectSnapshot(), getRegistrySnapshotForDoctor()]);
+  checks.push({ id: "systemd", name: "Known services", state: services.some(item => item.state === "active") ? "ok" : "check", detail: `${services.filter(item => item.state === "active").length}/${services.length} known services active` });
+  checks.push({ id: "compose", name: "Configured Compose projects", state: projects.some(item => item.available) ? "ok" : "check", detail: `${projects.filter(item => item.available).length}/${projects.length} Compose files available` });
+  checks.push({ id: "registry", name: "Nexus registry", state: registry.commands + registry.profiles > 0 ? "ok" : "check", detail: `${registry.commands} command(s), ${registry.profiles} profile(s)` });
+  return { sampledAt: new Date().toISOString(), checks, summary: { ok: checks.filter(item => item.state === "ok").length, check: checks.filter(item => item.state !== "ok").length } };
+}
+async function getRegistrySnapshotForDoctor() {
+  try {
+    const raw = await readFile(join(os.homedir(), ".config", "nexus-control", "registry.json"), "utf8");
+    const parsed = JSON.parse(raw);
+    return {
+      commands: parsed.commands && typeof parsed.commands === "object" ? Object.keys(parsed.commands).length : 0,
+      profiles: parsed.profiles && typeof parsed.profiles === "object" ? Object.keys(parsed.profiles).length : 0,
+    };
+  } catch { return { commands: 0, profiles: 0 }; }
+}
