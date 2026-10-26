@@ -69,10 +69,10 @@ function selectView(view) {
   document.querySelectorAll("[data-panel]").forEach(panel => {
     panel.style.display = panel.dataset.panel === view ? "" : "none";
   });
-  if (view === "overview") alert("Dashboard connected. Live host metrics are available; control actions are still read-only.");
-  else if (view === "system") alert("Live system metrics are read-only.");
-  else if (view === "services") alert("Service inventory is read-only. Start/stop/restart actions are not enabled yet.");
-  else if (view === "containers") alert("Container inventory is read-only. Container actions are not enabled yet.");
+  if (view === "overview") alert("Host metrics are live. Service and container actions are allowlisted; AI and power controls are pending.");
+  else if (view === "system") alert("Live system metrics are read-only. Service and container controls are separate panels.");
+  else if (view === "services") alert("Service actions are allowlisted and may require host permissions.");
+  else if (view === "containers") alert("Container actions are restricted to containers in the host inventory.");
   else if (view === "network") alert("Network interface details are read-only.");
   else alert("AI provider integration is not connected yet.");
 }
@@ -128,7 +128,7 @@ async function start() {
     $("#bridge-title").textContent = overview.machine.state === "connected" ? "Host metrics connected" : "Waiting for the host";
     $("#bridge-detail").textContent = overview.machine.detail;
     const statusChip = document.querySelector(".status-chip");
-    if (statusChip) { statusChip.innerHTML = '<span class="pulse"></span> READ ONLY'; statusChip.style.color = "var(--green)"; statusChip.style.borderColor = "#345b50"; }
+    if (statusChip) { statusChip.innerHTML = '<span class="pulse"></span> ALLOWLISTED'; statusChip.style.color = "var(--green)"; statusChip.style.borderColor = "#345b50"; }
     alert("Discord identity verified. Private dashboard ready.", "ok");
   } catch (error) {
     $("#user-state").textContent = "Session unavailable";
