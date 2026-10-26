@@ -4,7 +4,7 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { assertAuthorizedDiscordUser } from "./authz.js";
-import { getSystemSnapshot } from "./control.js";
+import { getSystemSnapshot, getServiceSnapshot, getContainerSnapshot } from "./control.js";
 
 const ROOT = fileURLToPath(new URL("../public/", import.meta.url));
 const PORT = Number(process.env.PORT || 8787);
@@ -112,6 +112,12 @@ export function createAppServer() {
         catch { return send(res, 403, { error: "Not authorized" }); }
         if (req.method === "GET" && url.pathname === "/api/system") {
           return send(res, 200, await getSystemSnapshot());
+        }
+        if (req.method === "GET" && url.pathname === "/api/services") {
+          return send(res, 200, { services: await getServiceSnapshot() });
+        }
+        if (req.method === "GET" && url.pathname === "/api/containers") {
+          return send(res, 200, await getContainerSnapshot());
         }
         if (req.method === "GET" && url.pathname === "/api/overview") {
           return send(res, 200, {
