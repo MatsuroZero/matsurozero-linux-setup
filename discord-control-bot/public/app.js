@@ -6,7 +6,7 @@ let appId = "";
 let modelCatalog = null;
 const moduleInfo = {
   overview: ["Overview", "◈"], system: ["System monitor", "⌁"], services: ["Services", "◉"],
-  containers: ["Containers", "▦"], network: ["Network", "⌘"], assistant: ["AI assistant", "✳"]
+  containers: ["Containers", "▦"], network: ["Network", "⌘"], assistant: ["AI assistant", "✳"], power: ["Power controls", "⏻"]
 };
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
@@ -176,7 +176,8 @@ function selectView(view) {
   else if (view === "system") alert("Live system metrics are read-only. Service and container controls are separate panels.");
   else if (view === "services") alert("Service actions are allowlisted and may require host permissions.");
   else if (view === "containers") alert("Container actions are restricted to containers in the host inventory.");
-  else if (view === "network") alert("Network interface details are read-only.");
+  else if (view === "network") alert("Network interface details and sampled throughput are read-only.");
+  else if (view === "power") alert("Power actions affect the host and require explicit confirmation.");
   else alert("Choose an available Ollama or Gemini model. Chat history is kept for this server session.");
 }
 document.querySelectorAll(".nav").forEach(button => button.addEventListener("click", () => selectView(button.dataset.view)));
