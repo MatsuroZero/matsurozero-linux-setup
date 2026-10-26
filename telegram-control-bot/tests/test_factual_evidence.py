@@ -1135,8 +1135,8 @@ class NumericEvidenceRelevanceTests(unittest.TestCase):
         wikipedia = {
             "title": "Jupiter",
             "excerpt": (
-                "Jupiter is a gas giant planet. It has a diameter of 139820 km. "
-                "Its moon system is complex."
+                "Jupiter is a gas giant planet. Jupiter has a diameter of 139820 km. "
+                "Jupiter has many moons, but their total is not stated here."
             ),
             "url": "https://en.wikipedia.org/?curid=777",
             "source": "Wikipedia article extract",
