@@ -33,6 +33,7 @@ test("control action validators reject unknown targets and unsupported actions",
   const { validateServiceAction, validateContainerAction } = await import("../src/control.js");
   assert.throws(() => validateServiceAction("arbitrary", "restart"), error => error.status === 400);
   assert.throws(() => validateServiceAction("docker", "exec"), error => error.status === 400);
+  assert.equal(validateServiceAction("docker", "enable").action, "enable");
   assert.throws(() => validateContainerAction("name; arbitrary command", "start"), error => error.status === 400);
   assert.throws(() => validateContainerAction("valid-name", "exec"), error => error.status === 400);
 });
