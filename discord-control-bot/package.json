@@ -1,0 +1,14 @@
+{
+  "name": "discord-control-bot",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Discord Activity and interaction adapter for the shared Linux control system",
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "check": "node --check src/authz.js && node --check src/feature-manifest.js"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
