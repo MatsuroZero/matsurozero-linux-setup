@@ -13,6 +13,28 @@ sys.path.insert(0, str(BOT_DIR))
 import bot  # noqa: E402
 
 
+class PiDigitTests(unittest.TestCase):
+    def test_first_50_significant_digits_of_pi(self):
+        self.assertEqual(
+            bot._pi_digits(50),
+            "3.1415926535897932384626433832795028841971693993751",
+        )
+
+    def test_pi_request_is_handled_deterministically(self):
+        answer = bot._answer_pi_request("write 300 digits of pi")
+        self.assertTrue(answer.startswith("π (300 significant digits"))
+        digits = answer.splitlines()[1]
+        self.assertEqual(len(digits.replace(".", "")), 300)
+        self.assertEqual(digits[:22], "3.14159265358979323846")
+
+    def test_pi_request_without_count_uses_reasonable_default(self):
+        answer = bot._answer_pi_request("tell me some digits of pi")
+        self.assertEqual(len(answer.splitlines()[1].replace(".", "")), 50)
+
+    def test_unrelated_pi_mention_is_not_treated_as_digit_request(self):
+        self.assertIsNone(bot._answer_pi_request("What is pi and why is it irrational?"))
+
+
 class ArithmeticTests(unittest.TestCase):
     def test_plain_arithmetic(self):
         self.assertEqual(bot._answer_arithmetic_question("1 + 1"), "2")
@@ -136,6 +158,26 @@ class TemporaryMemoryTests(unittest.TestCase):
             )
         )
         self.assertEqual(self.session["temporary_facts"], [])
+
+    def test_favorite_show_recall_from_recent_user_message(self):
+        history = [
+            {"role": "user", "content": "JoJo's Bizarre Adventure is my favorite show."},
+        ]
+        self.assertEqual(
+            bot._answer_from_recent_disclosures("What's my favorite show?", history),
+            "You told me JoJo's Bizarre Adventure is your favorite show/anime.",
+        )
+
+    def test_saved_memory_recalls_love_fact_without_model(self):
+        original = bot._load_ollama_memory
+        try:
+            bot._load_ollama_memory = lambda: {"profile": "", "facts": ["i love jojo"]}
+            self.assertEqual(
+                bot._answer_from_saved_memory("what do i love"),
+                "You've told me you love jojo.",
+            )
+        finally:
+            bot._load_ollama_memory = original
 
     def test_favorite_game_recall_from_recent_user_message(self):
         history = [
