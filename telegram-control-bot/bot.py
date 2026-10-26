@@ -1201,7 +1201,20 @@ async def chat_provider_callback(update: Update, context: ContextTypes.DEFAULT_T
         await query.edit_message_text("AI chat is already active. Use /bye to end it.")
         return
     if query.data == "chat:local":
-        await query.edit_message_text("Send /chat to reopen the local model list.")
+        try:
+            local_models = await _ollama_models()
+        except (RuntimeError, httpx.HTTPError, ValueError) as exc:
+            await query.edit_message_text(f"Couldn't query local Ollama: {str(exc)[:350]}")
+            return
+        context.user_data["ollama_models"] = local_models
+        rows = [[InlineKeyboardButton(f"🦙 {name}", callback_data=f"ollama:model:{i}")]
+                for i, name in enumerate(local_models[:30])]
+        if GEMINI_API_KEY:
+            rows.append([InlineKeyboardButton("☁️ Gemini models →", callback_data="chat:gemini")])
+        await query.edit_message_text(
+            "🤖 LOCAL AI MODELS\\n━━━━━━━━━━━━━━━━━━\\nSelect a local model or open Gemini.",
+            reply_markup=InlineKeyboardMarkup(rows) if rows else None,
+        )
         return
     if not GEMINI_API_KEY:
         await query.edit_message_text("Gemini isn't configured. Add GEMINI_API_KEY to .env and restart the bot.")
