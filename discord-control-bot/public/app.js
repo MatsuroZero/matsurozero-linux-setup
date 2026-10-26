@@ -5,6 +5,38 @@ const alertBox = $("#alert");
 let appId = "";
 let modelCatalog = null;
 let savedFacts = [];
+
+let liveRefreshTimer = null;
+let liveRefreshInFlight = false;
+
+async function refreshLiveMetrics() {
+  if (liveRefreshInFlight || document.visibilityState === "hidden") return;
+  liveRefreshInFlight = true;
+  try {
+    const [system, network] = await Promise.all([api("/api/system"), api("/api/network")]);
+    $("#cpu-value").textContent = system.cpu.usagePercent + "%";
+    $("#cpu-detail").textContent = system.cpu.cores + " logical cores · load " + system.cpu.loadAverage.join(" / ");
+    $("#cpu-meter").style.width = system.cpu.usagePercent + "%";
+    $("#memory-value").textContent = system.memory.usedPercent + "%";
+    $("#memory-detail").textContent = system.memory.used.label + " of " + system.memory.total.label;
+    $("#memory-meter").style.width = system.memory.usedPercent + "%";
+    $("#disk-value").textContent = system.disk ? system.disk.usedPercent + "%" : "N/A";
+    $("#disk-detail").textContent = system.disk ? system.disk.free.label + " free of " + system.disk.total.label : "Disk metrics unavailable";
+    $("#disk-meter").style.width = system.disk ? system.disk.usedPercent + "%" : "0%";
+    $("#uptime-value").textContent = system.uptime;
+    $("#temperature-value").textContent = system.temperatures?.maxCelsius == null ? "N/A" : system.temperatures.maxCelsius + "°C";
+    $("#temperature-detail").textContent = system.temperatures?.available ? system.temperatures.sensors.length + " sensor(s) detected" : "No readable thermal sensors";
+    $("#host-detail").textContent = system.hostname + " · " + system.platform + "/" + system.architecture;
+    $("#sampled-at").textContent = "Updated " + new Date(system.sampledAt).toLocaleTimeString() + " · interfaces: " + (system.networkInterfaces.join(", ") || "none");
+    $("#processes").innerHTML = system.topProcesses.length ? system.topProcesses.map(proc => '<div class="process-row"><strong title="' + escapeHtml(proc.name) + '">' + escapeHtml(proc.name) + ' <span style="text-align:left">#' + proc.pid + '</span></strong><span>CPU ' + proc.cpuPercent + '%</span><span>RAM ' + proc.memoryPercent + '%</span></div>').join("") : '<p class="muted">Process list unavailable</p>';
+    $("#interfaces").innerHTML = system.networkInterfaces.length ? system.networkInterfaces.map(name => '<span class="interface-chip">' + escapeHtml(name) + '</span>').join("") : '<p class="muted">No active non-loopback interfaces detected.</p>';
+    $("#network-traffic").innerHTML = network.available && network.interfaces.length ? network.interfaces.map(item => '<div class="network-row"><strong>' + escapeHtml(item.name) + '</strong><span>↓ ' + escapeHtml(item.rxRate) + '</span><span>↑ ' + escapeHtml(item.txRate) + '</span></div>').join("") : '<p class="muted">Network throughput is unavailable on this host.</p>';
+  } catch {
+    // Keep the last good snapshot visible if a background refresh fails.
+  } finally {
+    liveRefreshInFlight = false;
+  }
+}
 const moduleInfo = {
   overview: ["Overview", "◈"], system: ["System monitor", "⌁"], services: ["Services", "◉"],
   containers: ["Containers", "▦"], network: ["Network", "⌘"], assistant: ["AI assistant", "✳"], links: ["Dashboards", "↗"], registry: ["Nexus commands", "⌘"], diagnostics: ["Diagnostics", "✓"], power: ["Power controls", "⏻"]
@@ -355,6 +387,7 @@ async function start() {
     const statusChip = document.querySelector(".status-chip");
     if (statusChip) { statusChip.innerHTML = '<span class="pulse"></span> ALLOWLISTED'; statusChip.style.color = "var(--green)"; statusChip.style.borderColor = "#345b50"; }
     alert("Discord identity verified. Private dashboard ready.", "ok");
+    if (!liveRefreshTimer) liveRefreshTimer = setInterval(refreshLiveMetrics, 10000);
   } catch (error) {
     $("#user-state").textContent = "Session unavailable";
     alert(error.message || "Could not initialize Discord session.", "error");
