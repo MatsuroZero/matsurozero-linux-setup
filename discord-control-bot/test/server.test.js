@@ -115,3 +115,13 @@ test("session cookie parser handles normal cookies, equals signs, and exact name
   assert.equal(cookieValue("nexus_sid_extra=wrong; other=value", "nexus_sid"), undefined);
   assert.equal(cookieValue("other=value", "nexus_sid"), undefined);
 });
+
+test("session endpoint safely rejects unknown and malformed cookies", async () => {
+  await withServer(async base => {
+    const response = await fetch(base + "/api/session", {
+      headers: { cookie: "nexus_sid_extra=not-a-session; malformed-cookie" },
+    });
+    assert.equal(response.status, 401);
+    assert.deepEqual(await response.json(), { authenticated: false });
+  });
+});
