@@ -555,7 +555,7 @@ def assess_claim_level_support(question, answer, evidence):
     text = str(answer or "").strip()
     if not text:
         return {"status": "unavailable", "claims": [], "unsupported_claims": []}
-    conflicts = detect_evidence_conflicts(evidence)
+    conflicts = detect_evidence_conflicts(evidence, question=question)
     if conflicts:
         return {
             "status": "insufficient_overlap",
@@ -800,13 +800,15 @@ def _trusted_evidence_records(evidence):
 
 
 
-def detect_evidence_conflicts(evidence):
+def detect_evidence_conflicts(evidence, question=None):
     """Flag obvious disagreement between closely matching source sentences.
 
     This conservative lexical check is a warning signal, not semantic verification.
     """
     records = _trusted_evidence_records(evidence)
     conflicts = []
+    question_terms = _content_tokens(question) if question else set()
+    minimum_question_overlap = 1 if len(question_terms) <= 2 else 2
     negation = re.compile(r"\b(?:not|never|without|neither|cannot|no)\b", re.IGNORECASE)
     number_pattern = re.compile(r"(?<![A-Za-z])(?:\d[\d,]*(?:\.\d+)?%?)(?![A-Za-z])")
     number_words = {
@@ -850,6 +852,10 @@ def detect_evidence_conflicts(evidence):
                     overlap = len(shared) / max(1, min(len(left_terms), len(right_terms)))
                     if len(shared) < 3 or overlap < 0.6:
                         continue
+                    # When the caller knows the question, ignore contradictions
+                    # that concern a different topic from the user's request.
+                    if question_terms and len(shared & question_terms) < minimum_question_overlap:
+                        continue
                     polarity_differs = bool(negation.search(left_sentence)) != bool(negation.search(right_sentence))
                     left_numbers = numeric_values(left_sentence)
                     right_numbers = numeric_values(right_sentence)
@@ -864,7 +870,7 @@ def detect_evidence_conflicts(evidence):
     return conflicts
 
 
-def format_multi_source_evidence_for_prompt(evidence):
+def format_multi_source_evidence_for_prompt(evidence, question=None):
     """Format multiple retrieved sources as untrusted candidate evidence."""
     records = _trusted_evidence_records(evidence)
     if not records:
@@ -875,7 +881,7 @@ def format_multi_source_evidence_for_prompt(evidence):
             "Source " + str(index) + ": " + item["title"] + " (" + item["source"] + ")\n"
             + "Extract: " + item["excerpt"] + "\nURL: " + item["url"]
         )
-    conflicts = detect_evidence_conflicts(evidence)
+    conflicts = detect_evidence_conflicts(evidence, question=question)
     conflict_note = ""
     if conflicts:
         conflict_note = (
