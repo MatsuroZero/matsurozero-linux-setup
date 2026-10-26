@@ -1408,7 +1408,7 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         evidence_started = time.perf_counter()
         evidence = await retrieve_multi_source_evidence(user_text)
         log.debug('Evidence retrieval stage took %.3fs', time.perf_counter() - evidence_started)
-        evidence_prompt = format_multi_source_evidence_for_prompt(evidence)
+        evidence_prompt = format_multi_source_evidence_for_prompt(evidence, question=user_text)
         if evidence_prompt:
             system_prompt += "\n\n" + evidence_prompt
         elif is_time_sensitive_question(user_text):
