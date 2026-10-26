@@ -5,6 +5,7 @@ import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { assertAuthorizedDiscordUser } from "./authz.js";
 import { getSystemSnapshot, getServiceSnapshot, getContainerSnapshot, performServiceAction, performContainerAction } from "./control.js";
+import { chat, getModelCatalog } from "./ai.js";
 
 const ROOT = fileURLToPath(new URL("../public/", import.meta.url));
 const PORT = Number(process.env.PORT || 8787);
@@ -89,7 +90,7 @@ export function createAppServer() {
       if (req.method === "GET" && url.pathname === "/api/health") {
         return send(res, 200, { ok: true, service: "discord-control-activity", hostMetrics: "available", controlActions: "disabled" });
       }
-      if (req.method === "POST" && ["/api/session", "/api/logout", "/api/services/action", "/api/containers/action"].includes(url.pathname) && !hasSameOrigin(req)) {
+      if (req.method === "POST" && ["/api/session", "/api/logout", "/api/services/action", "/api/containers/action", "/api/ai/chat"].includes(url.pathname) && !hasSameOrigin(req)) {
         return send(res, 403, { error: "Cross-origin request rejected" });
       }
       if (req.method === "POST" && url.pathname === "/api/session") {
@@ -100,7 +101,7 @@ export function createAppServer() {
         const user = await discordApi("/users/@me", tokenData.access_token);
         assertAuthorizedDiscordUser(user.id, process.env.DISCORD_ALLOWED_USER_ID);
         const sid = randomBytes(32).toString("base64url");
-        sessions.set(sid, { userId: user.id, username: user.global_name || user.username, expiresAt: Date.now() + SESSION_TTL_MS });
+        sessions.set(sid, { userId: user.id, username: user.global_name || user.username, expiresAt: Date.now() + SESSION_TTL_MS, history: [] });
         return send(res, 200, { ok: true, access_token: tokenData.access_token, user: { id: user.id, name: user.global_name || user.username } }, {
           "set-cookie": `nexus_sid=${sid}; HttpOnly; Secure; SameSite=None; Path=/; Max-Age=28800`,
         });
@@ -120,6 +121,16 @@ export function createAppServer() {
         if (!session) return send(res, 401, { error: "Authenticate through Discord first" });
         try { assertAuthorizedDiscordUser(session.userId, process.env.DISCORD_ALLOWED_USER_ID); }
         catch { return send(res, 403, { error: "Not authorized" }); }
+        if (req.method === "GET" && url.pathname === "/api/ai/models") {
+          return send(res, 200, await getModelCatalog());
+        }
+        if (req.method === "POST" && url.pathname === "/api/ai/chat") {
+          const { provider, model, message } = await readJson(req, 16_384);
+          const result = await chat({ provider, model, message, history: session.history });
+          session.history = result.history;
+          console.info(JSON.stringify({ event: "ai_chat", userId: session.userId, provider, model, at: new Date().toISOString() }));
+          return send(res, 200, { answer: result.answer });
+        }
         if (req.method === "GET" && url.pathname === "/api/system") {
           return send(res, 200, await getSystemSnapshot());
         }
