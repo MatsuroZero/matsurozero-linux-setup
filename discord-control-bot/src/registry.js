@@ -22,11 +22,11 @@ async function loadRegistry() {
     throw Object.assign(new Error("Nexus command registry is invalid or unreadable"), { status: 500 });
   }
 }
-function validateName(name) {
+export function validateName(name) {
   if (typeof name !== "string" || !NAME_PATTERN.test(name)) throw Object.assign(new Error("Invalid registry item name"), { status: 400 });
   return name;
 }
-function validArgv(entry) {
+export function validArgv(entry) {
   return entry && Array.isArray(entry.argv) && entry.argv.length > 0 &&
     entry.argv.length <= 64 && entry.argv.every(arg => typeof arg === "string" && arg.length <= 2048) &&
     typeof entry.argv[0] === "string" && entry.argv[0].trim().length > 0;
