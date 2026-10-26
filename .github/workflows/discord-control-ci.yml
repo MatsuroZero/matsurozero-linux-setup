@@ -32,6 +32,6 @@ jobs:
       - name: Check JavaScript syntax
         run: npm run check
       - name: Check installer shell syntax
-        run: bash -n deploy/install-user-service.sh
+        run: bash -n deploy/install-user-service.sh scripts/preflight.sh
       - name: Run unit and API tests
         run: npm test
