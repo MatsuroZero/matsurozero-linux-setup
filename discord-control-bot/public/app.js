@@ -31,11 +31,12 @@ function drawCards(sections) {
 function renderServices(services) {
   $("#services").innerHTML = services.map(service => {
     const actions = service.state === "active" ? ["restart", "stop"] : ["start"];
-    return `<div class="inventory-row"><div><strong>${escapeHtml(service.name)}</strong><small>${escapeHtml(service.scope)} · ${escapeHtml(service.unit)}</small></div><div class="inventory-actions"><span class="state state-${escapeHtml(service.state)}">${escapeHtml(service.state)}</span>${actions.map(action => `<button class="action-button" data-service-id="${escapeHtml(service.id)}" data-action="${action}">${action}</button>`).join("")}</div></div>`;
+    if (["enabled", "disabled"].includes(service.autostart)) actions.push(service.autostart === "enabled" ? "disable" : "enable");
+    return `<div class="inventory-row"><div><strong>${escapeHtml(service.name)}</strong><small>${escapeHtml(service.scope)} · ${escapeHtml(service.unit)}</small><small>Autostart: ${escapeHtml(service.autostart || "unknown")}</small></div><div class="inventory-actions"><span class="state state-${escapeHtml(service.state)}">${escapeHtml(service.state)}</span>${actions.map(action => `<button class="action-button" data-service-id="${escapeHtml(service.id)}" data-action="${action}">${action}</button>`).join("")}</div></div>`;
   }).join("");
   document.querySelectorAll("[data-service-id]").forEach(button => button.addEventListener("click", async () => {
     const serviceId = button.dataset.serviceId, action = button.dataset.action;
-    if (!window.confirm(`Confirm ${action} for ${serviceId}?`)) return;
+    if (["stop", "restart", "enable", "disable"].includes(action) && !window.confirm(`Confirm ${action} for ${serviceId}?`)) return;
     button.disabled = true;
     try {
       await api("/api/services/action", { method: "POST", body: JSON.stringify({ serviceId, action }) });
