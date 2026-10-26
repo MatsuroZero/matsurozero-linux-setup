@@ -18,7 +18,7 @@ import httpx
 
 WIKIPEDIA_API = "https://en.wikipedia.org/w/api.php"
 REQUEST_TIMEOUT_SECONDS = 3.0
-MAX_QUESTION_CHARS = 240
+MAX_QUESTION_CHARS = 600
 MAX_EXTRACT_CHARS = 1200
 EVIDENCE_CACHE_TTL_SECONDS = 180.0
 EVIDENCE_MISS_CACHE_TTL_SECONDS = 20.0
@@ -62,7 +62,7 @@ def should_retrieve_factual_evidence(question):
     if re.search(r"(?<!\w)\d+\s*(?:\*\*|//|[+*/%^])\s*[+-]?\d+(?!\w)", text):
         return False
 
-    return bool(re.match(
+    direct_question = bool(re.match(
         r"^(?:what|who|where|when|which|why|how)\b|"
         r"^(?:define|explain|tell me about|give me facts about|"
         r"can you tell me|could you tell me|please tell me|"
@@ -70,6 +70,13 @@ def should_retrieve_factual_evidence(question):
         r"^is\s+(?:an?\s+|the\s+)?[\w-]+\b",
         lowered,
     ))
+    research_request = bool(re.search(
+        r"\b(?:proper research|research this|do research|sources?|references?|"
+        r"citations?|prove|proof|verify|fact.?check|cast|characters?|"
+        r"who plays|who are the main characters)\b",
+        lowered,
+    ))
+    return direct_question or research_request
 
 
 
@@ -117,6 +124,16 @@ def _retrieval_query(question):
         "", text, flags=re.I,
     )
     text = re.sub(r"^please tell me\s+", "", text, flags=re.I)
+    text = re.sub(
+        r"^(?:let['’]?s\s+)?(?:watch|look at|talk about)\s+",
+        "", text, flags=re.I,
+    )
+    text = re.sub(r"\s+together\b", "", text, flags=re.I)
+    text = re.sub(
+        r"\b(?:actually[, ]*)?(?:could|can) you (?:please )?(?:do|conduct|perform) "
+        r"(?:a )?(?:proper )?research\b.*$",
+        "", text, flags=re.I,
+    )
     text = re.sub(
         r"\s*(?:,|\band\b)?\s*(?:and\s+)?(?:provide|give|find|include|cite)\s+"
         r"(?:me\s+)?(?:some\s+)?(?:(?:great|good|reliable|credible|academic|official)\s+)?"
@@ -184,7 +201,8 @@ async def retrieve_wikipedia_evidence(question):
         if not candidates:
             return None
 
-        question_terms = _content_tokens(question)
+        normalized_question = _retrieval_query(question)
+        question_terms = _content_tokens(normalized_question)
         ranked = []
         for rank, page_id, title, excerpt in candidates:
             score = _evidence_relevance_score(question_terms, title, excerpt)
@@ -194,7 +212,7 @@ async def retrieve_wikipedia_evidence(question):
         # to mislead a small model than to help. Abstain rather than pass it along.
         if (
             not _evidence_matches_question(question_terms, title, excerpt)
-            or not _evidence_has_required_numeric_value(question, excerpt)
+            or not _evidence_has_required_numeric_value(normalized_question, excerpt)
         ):
             return None
         return {
