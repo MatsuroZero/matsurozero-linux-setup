@@ -153,7 +153,7 @@ $("#links-pin-form").addEventListener("submit", async event => {
     const result = await api("/api/links/credentials", { method: "POST", body: JSON.stringify({ pin: $("#links-pin").value }) });
     $("#links-pin").value = "";
     $("#credential-results").innerHTML = result.credentials.map((item, index) => `<div class="credential-row"><strong>${escapeHtml(item.name)}</strong><small>Username</small><code>${escapeHtml(item.username)}</code><small>Password</small><code>${escapeHtml(item.password)}</code></div>`).join("");
-  } catch (error) { $("#credential-results").textContent = error.message; }
+  } catch (error) { $("#credential-results").textContent = error.message; $("#links-pin").value = ""; }
   finally { if (button) button.disabled = false; }
 });
 $("#hide-credentials").addEventListener("click", () => {
@@ -272,6 +272,10 @@ function selectView(view) {
   const info = moduleInfo[view] || moduleInfo.overview;
   $("#page-title").textContent = info[0];
   document.querySelectorAll(".nav").forEach(button => button.classList.toggle("active", button.dataset.view === view));
+  if (view !== "links") {
+    $("#credential-results").textContent = "";
+    $("#links-pin").value = "";
+  }
   document.querySelectorAll("[data-panel]").forEach(panel => {
     panel.style.display = panel.dataset.panel === view ? "" : "none";
   });
