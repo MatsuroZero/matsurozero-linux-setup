@@ -1,38 +1,52 @@
 # Discord Control Activity
 
-This directory is the new Discord adapter. The implementation is intentionally being built in small, testable steps instead of copying the old bots wholesale.
+A private Discord Activity web app scaffold for the Linux control system. The dashboard, server, OAuth code exchange, Discord Embedded App SDK handshake, server-side allowlist, and basic HTTP tests are now present. Live machine control and the Discord launch command are not complete yet.
 
-## Current status
+## Implemented in this milestone
 
-- A fail-closed server-side Discord user allowlist helper exists in src/authz.js.
-- Unit tests cover exact user matching, missing/malformed configuration, and denied users.
-- The migration report is at ../docs/DISCORD_NEXUS_MIGRATION_REPORT.md.
-- The Activity UI, OAuth exchange, interaction handlers, and shared control API are not implemented yet. Do not treat this scaffold as a runnable bot.
+- Dark responsive Activity dashboard with modules for system status, services, containers, network, and AI assistant.
+- Node.js HTTP server, static asset serving, health/config endpoints, and short-lived in-memory sessions.
+- Discord OAuth authorization-code exchange on the server and SDK authentication in the Activity.
+- Server-side allowlist validation against `DISCORD_ALLOWED_USER_ID`; privileged API routes re-check the session identity.
+- Unit tests for allowlist behavior and HTTP boundary behavior.
+- No arbitrary shell execution endpoint. System-changing controls remain disabled until the local bridge exists.
 
-## Planned architecture
+## Requirements
 
-1. Discord Activity frontend using the official Embedded App SDK.
-2. Discord interaction adapter using current application commands and components.
-3. Shared Python control layer for system status, services, Docker, network, AI chat, and Nexus operations.
-4. Authenticated local bridge between the public Activity host and the CachyOS machine.
-5. Independent allowlists for Discord and Telegram; every privileged backend request must re-check authorization.
-6. GitHub-hosted automated tests that require no live bot token or local machine.
+- Node.js 22 or newer.
+- HTTPS hosting for the deployed Activity.
+- Discord application with an Activity URL mapping and the Embedded App SDK enabled.
+- In Discord Developer Portal, add `https://127.0.0.1` as the OAuth redirect URI, following the official Activity guide.
+- Configure user-install / DM contexts and test launch behavior in your own application settings. A DM launch has not yet been end-to-end verified.
 
-## Configuration planned for runtime
+## Run locally
 
-- DISCORD_APPLICATION_ID
-- DISCORD_PUBLIC_KEY
-- DISCORD_BOT_TOKEN (server-side only, never sent to the browser)
-- DISCORD_ALLOWED_USER_ID
-- DISCORD_CLIENT_SECRET (server-side OAuth exchange only)
-- CONTROL_BRIDGE_SECRET
+1. Copy `.env.example` to an untracked `.env` and fill in values.
+2. Set `DISCORD_APPLICATION_ID`, `DISCORD_CLIENT_SECRET`, and `DISCORD_ALLOWED_USER_ID`.
+3. Set `DISCORD_REDIRECT_URI=https://127.0.0.1` as the OAuth placeholder redirect URI registered in the Developer Portal.
+4. Run `npm run check`, `npm test`, then `npm start`.
+5. Open the Activity through Discord. Ordinary browser preview is not a substitute for testing the Embedded App SDK handshake.
 
-Use the host's secret manager or an untracked local environment file. Never commit real values.
+This simple server does not load `.env` automatically. Export variables in the shell or use a deployment platform's secret/environment configuration.
 
-## Important
+## Still to implement
 
-The bot token was exposed in a chat and must be regenerated before use. Historical source repositories also contain old hard-coded webhook/API credentials; rotate any that are still active.
+1. Discord slash-command/Activity launch integration and verified DM launch flow.
+2. Authenticated, narrow local bridge to the CachyOS control host.
+3. Shared control core extracted from Telegram bot and Nexus CLI, with typed allowlisted operations.
+4. Real status/action handlers for system, services, Docker, network, power controls, and AI chat.
+5. Automated GitHub Actions execution of the tests. The repository integration blocked adding a workflow file; tests are committed but no workflow run has occurred yet.
 
-A GitHub Actions workflow could not be added through the current repository integration, so these tests are present in the branch but are not yet automatically executed by GitHub Actions. Run them in a CI workflow once that workflow file can be added:
-- npm test
-- npm run check
+## Security
+
+- The bot token previously pasted into chat must be regenerated before use. Do not put it in the browser.
+- Rotate any still-active credentials that were hard-coded in historical repositories.
+- Keep `.env` untracked and never commit client secrets or bridge secrets.
+- The current bridge is intentionally absent. Do not expose unrestricted shell execution or a privileged machine API to the public internet.
+
+## Official references
+
+- [Building an Activity](https://discord.com/developers/docs/activities/building-an-activity)
+- [Embedded App SDK](https://discord.com/developers/docs/developer-tools/embedded-app-sdk)
+- [Application commands and contexts](https://discord.com/developers/docs/interactions/application-commands)
+- [Interactions overview](https://discord.com/developers/docs/interactions/overview)
