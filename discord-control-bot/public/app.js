@@ -2,7 +2,7 @@ import { DiscordSDK } from "https://cdn.jsdelivr.net/npm/@discord/embedded-app-s
 
 const $ = (selector) => document.querySelector(selector);
 const alertBox = $("#alert");
-const appId = document.querySelector('meta[name="discord-client-id"]')?.content || "";
+let appId = "";
 const moduleInfo = {
   overview: ["Overview", "◈"], system: ["System monitor", "⌁"], services: ["Services", "◉"],
   containers: ["Containers", "▦"], network: ["Network", "⌘"], assistant: ["AI assistant", "✳"]
@@ -42,8 +42,10 @@ async function api(path, options = {}) {
 async function start() {
   try {
     // SDK initialization happens only when launched inside Discord.
+    const config = await api("/api/config");
+    appId = config.applicationId || "";
     const id = appId || new URLSearchParams(location.search).get("client_id") || "";
-    if (!id) throw new Error("Missing Discord application ID. Configure the Activity launch URL.");
+    if (!id) throw new Error("Set DISCORD_APPLICATION_ID on the Activity server.");
     const discordSdk = new DiscordSDK(id);
     await discordSdk.ready();
     const existing = await api("/api/session").catch(() => ({ authenticated: false }));
@@ -57,6 +59,8 @@ async function start() {
         scope: ["identify"],
       });
       const result = await api("/api/session", { method: "POST", body: JSON.stringify({ code }) });
+      const auth = await discordSdk.commands.authenticate({ access_token: result.access_token });
+      if (!auth) throw new Error("Discord SDK authentication failed.");
       user = result.user;
     } else user = existing.user;
     $("#user-name").textContent = user.name || "Authorized user";
