@@ -25,7 +25,7 @@ class GeminiProviderTests(unittest.IsolatedAsyncioTestCase):
         provider = GeminiProvider("test-key")
         response = httpx.Response(200, json={"choices": [{"message": {"content": "Hello"}}]})
         with patch.object(httpx.AsyncClient, "post", new=AsyncMock(return_value=response)) as post:
-            result = await provider.chat("gemini-test", [{"role": "user", "content": "hi"}])
+            result = await provider.chat(model="gemini-test", messages=[{"role": "user", "content": "hi"}])
         self.assertEqual(result["choices"][0]["message"]["content"], "Hello")
         self.assertEqual(post.await_args.args[0], "/chat/completions")
         self.assertEqual(post.await_args.kwargs["json"]["model"], "gemini-test")
