@@ -13,6 +13,7 @@ A private Discord Activity web app for monitoring a Linux host and safely managi
 - Read-only inventory of known Nexus systemd services and Docker containers, including systemd autostart state.
 - Confirmed start/stop/restart and enable/disable-autostart actions for a fixed allowlist of services, plus fixed Docker Compose project/container controls and bounded logs. Mutations use server-side origin checks and per-user action cooldown. No arbitrary shell endpoint exists.
 - Fixed Serpantinum lock, suspend, reboot, and shutdown actions, each guarded by an explicit UI confirmation and server-side allowlist.
+- Read-only listing and confirmed execution of pre-registered Nexus commands and profiles. Commands run from saved argv arrays with no shell, and profiles stop at the first failed step.
 - Optional AI chat using Ollama on the Activity host or Gemini when `GEMINI_API_KEY` is configured. Model choices are constrained to available Ollama tags and a fixed Gemini model allowlist; conversation history is session-only.
 - Persistent profile and remembered-fact management using the same default JSON path as the Telegram bot (`~/.local/share/telegram-control-bot/ollama_memory.json`). Set `OLLAMA_MEMORY_PATH` consistently in both services if the Telegram bot overrides it.
 - System service actions use `sudo -n` and fail closed unless the host has narrowly scoped sudo permissions. User service actions require a working user systemd session. Docker actions require Docker access for the server process.
@@ -47,7 +48,7 @@ To monitor your CachyOS PC, run this server on that PC. When run elsewhere, the 
 ## Still to implement
 
 1. Verify Activity launch in DMs/private channels on the actual Discord client and complete the Developer Portal URL mapping.
-2. Finish parity gaps in Nexus custom command/profile execution, health/doctor reports, and service/Docker autostart workflows.
+2. Finish parity gaps in Nexus health/doctor reports and Docker project autostart workflows.
 3. Extract common control logic so Telegram, Nexus CLI, and Discord share one implementation rather than drift.
 4. Verify the GitHub Actions run. The workflow exists on main and the build branch, but the connected GitHub run-list action only returns PR-triggered runs; no successful run is verified yet.
 
