@@ -25,5 +25,5 @@ test("throws a stable authorization error for denied users", () => {
 });
 
 test("authorization rejects numeric IDs to avoid snowflake precision loss", () => {
-  assert.equal(isAuthorizedDiscordUser(Number(ALLOWED)), false);
+  assert.equal(isAuthorizedDiscordUser(Number(allowed)), false);
 });
