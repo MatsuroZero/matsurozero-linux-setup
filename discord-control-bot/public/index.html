@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#15131d">
+  <title>Nexus Control</title>
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <main class="app-shell">
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-mark">N</span><div><strong>NEXUS</strong><small>CONTROL DECK</small></div></div>
+      <div class="side-label">WORKSPACE</div>
+      <button class="nav active" data-view="overview"><span>◈</span> Overview</button>
+      <button class="nav" data-view="system"><span>⌁</span> System monitor</button>
+      <button class="nav" data-view="services"><span>◉</span> Services</button>
+      <button class="nav" data-view="containers"><span>▦</span> Containers</button>
+      <button class="nav" data-view="network"><span>⌘</span> Network</button>
+      <button class="nav" data-view="assistant"><span>✳</span> AI assistant</button>
+      <div class="sidebar-bottom"><span class="pulse"></span><div><strong>Private instance</strong><small>Allowlisted account only</small></div></div>
+    </aside>
+    <section class="main">
+      <header class="topbar"><div><div class="eyebrow">LINUX REMOTE OPERATIONS</div><h1 id="page-title">Overview</h1></div><div class="profile"><span class="avatar">M</span><div><strong id="user-name">Discord session</strong><small id="user-state">Checking authorization…</small></div></div></header>
+      <div class="content">
+        <section class="welcome"><div><span class="eyebrow">YOUR MACHINE, AT A GLANCE</span><h2>Welcome back.</h2><p>One cockpit for system health, services, containers, and your local AI.</p></div><div class="orb" aria-hidden="true"><span></span><i></i></div></section>
+        <div id="alert" class="alert" role="status">Connecting to Discord…</div>
+        <section class="section-head"><div><h3>Control modules</h3><p>Connected to your private workspace</p></div><span class="pill">OWNER ACCESS ONLY</span></section>
+        <div id="cards" class="cards"></div>
+        <section class="bridge-panel"><div class="bridge-icon">⌁</div><div class="bridge-copy"><span class="eyebrow">LOCAL BRIDGE</span><h3 id="bridge-title">Waiting for your CachyOS machine</h3><p id="bridge-detail">The Activity shell is online. The authenticated local bridge is the next integration step, so no system-changing controls are enabled yet.</p></div><span class="status-chip"><span class="pulse"></span> NOT CONNECTED</span></section>
+        <footer><span>NEXUS CONTROL <b>·</b> PRIVATE BUILD</span><button id="logout" class="quiet-button">End session ↗</button></footer>
+      </div>
+    </section>
+  </main>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
