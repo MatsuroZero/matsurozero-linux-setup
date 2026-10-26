@@ -510,7 +510,7 @@ class EvidenceFormattingTests(unittest.TestCase):
         }
         result = factual_evidence.assess_answer_support(
             "How many moons does Jupiter have?",
-            "Jupiter has 95 moons.",
+            "Jupiter has 95 moons and a diameter of 139820 km.",
             evidence,
         )
         self.assertEqual(result["status"], "candidate_supported")
