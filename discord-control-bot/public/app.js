@@ -7,7 +7,7 @@ let modelCatalog = null;
 let savedFacts = [];
 const moduleInfo = {
   overview: ["Overview", "◈"], system: ["System monitor", "⌁"], services: ["Services", "◉"],
-  containers: ["Containers", "▦"], network: ["Network", "⌘"], assistant: ["AI assistant", "✳"], power: ["Power controls", "⏻"]
+  containers: ["Containers", "▦"], network: ["Network", "⌘"], assistant: ["AI assistant", "✳"], links: ["Dashboards", "↗"], power: ["Power controls", "⏻"]
 };
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
@@ -98,6 +98,28 @@ function renderContainers(data) {
     finally { button.disabled = false; }
   }));
 }
+function renderDashboards(dashboards) {
+  $("#dashboard-links").innerHTML = dashboards.map(item => {
+    const href = item.url ? `<a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">Open ↗</a>` : '<span class="muted">Invalid URL configuration</span>';
+    return `<div class="dashboard-row"><div><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.url || "URL unavailable")}</small></div>${href}</div>`;
+  }).join("");
+}
+$("#links-pin-form").addEventListener("submit", async event => {
+  event.preventDefault();
+  const button = event.submitter;
+  if (button) button.disabled = true;
+  $("#credential-results").textContent = "Verifying PIN…";
+  try {
+    const result = await api("/api/links/credentials", { method: "POST", body: JSON.stringify({ pin: $("#links-pin").value }) });
+    $("#links-pin").value = "";
+    $("#credential-results").innerHTML = result.credentials.map((item, index) => `<div class="credential-row"><strong>${escapeHtml(item.name)}</strong><small>Username</small><code>${escapeHtml(item.username)}</code><small>Password</small><code>${escapeHtml(item.password)}</code></div>`).join("");
+  } catch (error) { $("#credential-results").textContent = error.message; }
+  finally { if (button) button.disabled = false; }
+});
+$("#hide-credentials").addEventListener("click", () => {
+  $("#credential-results").textContent = "";
+  $("#links-pin").value = "";
+});
 function renderMemoryFacts(facts) {
   savedFacts = Array.isArray(facts) ? facts : [];
   $("#memory-facts").innerHTML = savedFacts.length ? savedFacts.map((fact, index) => `<div class="memory-fact"><span>${escapeHtml(fact)}</span><button class="action-button" data-memory-index="${index}" type="button">Forget</button></div>`).join("") : '<p class="muted">No saved facts yet.</p>';
@@ -218,6 +240,7 @@ function selectView(view) {
   else if (view === "services") alert("Service actions are allowlisted and may require host permissions.");
   else if (view === "containers") alert("Container actions are restricted to containers in the host inventory.");
   else if (view === "network") alert("Network interface details and sampled throughput are read-only.");
+  else if (view === "links") alert("Dashboard URLs are local-network links. Credentials require the configured server PIN.");
   else if (view === "power") alert("Power actions affect the host and require explicit confirmation.");
   else alert("Choose an available Ollama or Gemini model. Chat history is kept for this server session.");
 }
@@ -253,11 +276,12 @@ async function start() {
     const overview = await api("/api/overview");
     drawCards(overview.sections);
     selectView("overview");
-    const [system, serviceData, containerData, projectData, models, network, memory] = await Promise.all([api("/api/system"), api("/api/services"), api("/api/containers"), api("/api/projects"), api("/api/ai/models"), api("/api/network"), api("/api/ai/memory").catch(() => ({ profile: "", facts: [] }))]);
+    const [system, serviceData, containerData, projectData, models, network, memory, links] = await Promise.all([api("/api/system"), api("/api/services"), api("/api/containers"), api("/api/projects"), api("/api/ai/models"), api("/api/network"), api("/api/ai/memory").catch(() => ({ profile: "", facts: [] })), api("/api/links")]);
     modelCatalog = models;
     populateAiModels();
     $("#memory-profile").value = memory.profile || "";
     renderMemoryFacts(memory.facts || []);
+    renderDashboards(links.dashboards || []);
     $("#cpu-value").textContent = `${system.cpu.usagePercent}%`;
     $("#cpu-detail").textContent = `${system.cpu.cores} logical cores · load ${system.cpu.loadAverage.join(" / ")}`;
     $("#cpu-meter").style.width = `${system.cpu.usagePercent}%`;
