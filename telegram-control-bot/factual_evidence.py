@@ -264,7 +264,7 @@ def _evidence_has_required_numeric_value(question, excerpt):
     if not _question_requests_numeric_fact(question):
         return True
     question_terms = _content_tokens(question)
-    for sentence in re.split(r"(?<=[.!?])\\s+", str(excerpt or "")):
+    for sentence in re.split(r"(?<=[.!?])\s+", str(excerpt or "")):
         if (
             _normalized_numeric_values(sentence)
             and question_terms & _content_tokens(sentence)
