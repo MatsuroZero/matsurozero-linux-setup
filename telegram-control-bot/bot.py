@@ -1450,7 +1450,30 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             )
             response.raise_for_status()
             payload = response.json()
-        log.debug('Ollama generation stage took %.3fs', time.perf_counter() - generation_started)
+        generation_wall_seconds = time.perf_counter() - generation_started
+        # Ollama reports nanosecond timings and token counts. Record them so
+        # performance tuning is based on this PC's real throughput, not guesses.
+        eval_count = payload.get("eval_count", 0) or 0
+        eval_duration = payload.get("eval_duration", 0) or 0
+        prompt_eval_count = payload.get("prompt_eval_count", 0) or 0
+        prompt_eval_duration = payload.get("prompt_eval_duration", 0) or 0
+        load_duration = payload.get("load_duration", 0) or 0
+        tokens_per_second = (
+            eval_count * 1_000_000_000 / eval_duration
+            if eval_duration > 0 else 0.0
+        )
+        log.info(
+            "Ollama performance model=%s wall=%.2fs load=%.2fs "
+            "prompt_eval=%.2fs/%s tokens generation=%.2fs/%s tokens (%.2f tok/s)",
+            session["model"],
+            generation_wall_seconds,
+            load_duration / 1_000_000_000,
+            prompt_eval_duration / 1_000_000_000,
+            prompt_eval_count,
+            eval_duration / 1_000_000_000,
+            eval_count,
+            tokens_per_second,
+        )
         answer = payload.get("message", {}).get("content", "").strip()
         if not answer:
             raise RuntimeError("Ollama returned no response text.")
