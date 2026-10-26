@@ -13,7 +13,8 @@ A private Discord Activity web app for monitoring a Linux host and safely managi
 - Read-only inventory of known Nexus systemd services and Docker containers, including systemd autostart state.
 - Confirmed start/stop/restart and enable/disable-autostart actions for a fixed allowlist of services, plus fixed Docker Compose project/container controls and bounded logs. Mutations use server-side origin checks and per-user action cooldown. No arbitrary shell endpoint exists.
 - Fixed Serpantinum lock, suspend, reboot, and shutdown actions, each guarded by an explicit UI confirmation and server-side allowlist.
-- Optional AI chat using Ollama on the Activity host or Gemini when `GEMINI_API_KEY` is configured. Model choices are constrained to the available Ollama tags and a fixed Gemini model allowlist; conversation history is session-only.
+- Optional AI chat using Ollama on the Activity host or Gemini when `GEMINI_API_KEY` is configured. Model choices are constrained to available Ollama tags and a fixed Gemini model allowlist; conversation history is session-only.
+- Persistent profile and remembered-fact management using the same default JSON path as the Telegram bot (`~/.local/share/telegram-control-bot/ollama_memory.json`). Set `OLLAMA_MEMORY_PATH` consistently in both services if the Telegram bot overrides it.
 - System service actions use `sudo -n` and fail closed unless the host has narrowly scoped sudo permissions. User service actions require a working user systemd session. Docker actions require Docker access for the server process.
 - Tests cover authorization, API boundaries, metric shape, inventory shape, and input validation.
 
