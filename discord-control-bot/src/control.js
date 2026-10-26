@@ -228,7 +228,7 @@ export async function getContainerSnapshot() {
 }
 
 const PROJECT_ACTIONS = new Set(["start", "stop", "restart"]);
-function validateProjectAction(projectId, action) {
+export function validateProjectAction(projectId, action) {
   if (typeof projectId !== "string" || !PROJECT_BY_ID.has(projectId)) {
     throw Object.assign(new Error("Unknown Docker project"), { status: 400 });
   }
@@ -236,17 +236,21 @@ function validateProjectAction(projectId, action) {
   return { project: PROJECT_BY_ID.get(projectId), action };
 }
 function parseComposePs(raw) {
-  return raw.split("\n").filter(Boolean).slice(0, 100).map(line => {
-    try {
-      const item = JSON.parse(line);
-      return {
-        name: item.Name || item.Service || item.ID || "container",
-        state: String(item.State || item.Status || "unknown").toLowerCase(),
-        image: item.Image || "",
-        status: item.Status || item.State || "unknown",
-      };
-    } catch { return null; }
-  }).filter(Boolean);
+  let records = [];
+  try {
+    const parsed = JSON.parse(raw);
+    records = Array.isArray(parsed) ? parsed : [parsed];
+  } catch {
+    records = raw.split("\n").filter(Boolean).flatMap(line => {
+      try { return [JSON.parse(line)]; } catch { return []; }
+    });
+  }
+  return records.slice(0, 100).map(item => ({
+    name: item.Name || item.Service || item.ID || "container",
+    state: String(item.State || item.Status || "unknown").toLowerCase(),
+    image: item.Image || "",
+    status: item.Status || item.State || "unknown",
+  }));
 }
 export async function getProjectSnapshot() {
   return Promise.all(PROJECTS.map(async project => {
