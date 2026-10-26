@@ -28,8 +28,13 @@ function env(name) {
   if (!value) throw new Error(`Missing required environment variable: ${name}`);
   return value;
 }
-function cookieValue(header, name) {
-  return Object.fromEntries((header || "").split(";").map(v => v.trim().split(/=(.*)/s).slice(0, 2))).get(name);
+export function cookieValue(header, name) {
+  for (const part of (header || "").split(";")) {
+    const separator = part.indexOf("=");
+    if (separator < 0 || part.slice(0, separator).trim() !== name) continue;
+    return part.slice(separator + 1).trim();
+  }
+  return undefined;
 }
 function send(res, status, body, headers = {}) {
   const data = typeof body === "string" ? body : JSON.stringify(body);
