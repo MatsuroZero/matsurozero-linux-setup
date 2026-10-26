@@ -67,6 +67,34 @@ class ArithmeticTests(unittest.TestCase):
         )
 
 
+    def test_research_query_includes_recent_topic_context(self):
+        history = [
+            {"role": "user", "content": "Let's watch JoJo's Bizarre Adventure together, I like Jotaro a lot."},
+            {"role": "assistant", "content": "The cast is amazing."},
+        ]
+        query = bot._evidence_question_for_turn(
+            "Could you do proper research and prove the cast names?", history
+        )
+        self.assertIn("JoJo's Bizarre Adventure", query)
+        self.assertIn("Jotaro", query)
+        self.assertIn("research", query.casefold())
+
+    def test_contextual_media_preferences_store_title_and_character(self):
+        session = {
+            "temporary_facts": [],
+            "history": [
+                {"role": "user", "content": "Let's watch JoJo's Bizarre Adventure together."}
+            ],
+        }
+        self.assertTrue(bot._extract_explicit_temporary_fact(
+            session,
+            "I really love this show, it's my favorite anime, I like Jotaro a lot, do you know any of the cast?",
+        ))
+        facts = [item["fact"] for item in session["temporary_facts"]]
+        self.assertIn("Matthew's favorite anime is JoJo's Bizarre Adventure", facts)
+        self.assertIn("Matthew likes Jotaro from JoJo's Bizarre Adventure", facts)
+
+
 class TemporaryMemoryTests(unittest.TestCase):
     def setUp(self):
         self.session = {"temporary_facts": []}
