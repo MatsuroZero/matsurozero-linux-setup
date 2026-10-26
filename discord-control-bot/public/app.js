@@ -120,7 +120,7 @@ function renderRegistry(data) {
     $("#registry-output").textContent = `Running profile ${name}…`;
     try {
       const result = await api("/api/profiles/run", { method: "POST", body: JSON.stringify({ name }) });
-      $("#registry-output").textContent = result.results.map(item => `[${item.ok ? "OK" : "FAIL"}] ${item.label}\\n${item.output}`).join("\\n\\n");
+      $("#registry-output").textContent = result.results.map(item => `[${item.ok ? "OK" : "FAIL"}] ${item.label}\n${item.output}`).join("\n\n");
     } catch (error) { $("#registry-output").textContent = error.message; }
     finally { button.disabled = false; }
   }));
