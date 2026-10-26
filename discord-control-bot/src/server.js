@@ -4,7 +4,7 @@ import { randomBytes } from "node:crypto";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { assertAuthorizedDiscordUser } from "./authz.js";
-import { getSystemSnapshot, getServiceSnapshot, getContainerSnapshot, getNetworkSnapshot, getProjectSnapshot, performProjectAction, getProjectLogs, getContainerLogs, performServiceAction, performContainerAction } from "./control.js";
+import { getSystemSnapshot, getServiceSnapshot, getContainerSnapshot, getNetworkSnapshot, getProjectSnapshot, performProjectAction, getProjectLogs, getContainerLogs, validatePowerAction, performPowerAction, performServiceAction, performContainerAction } from "./control.js";
 import { chat, getModelCatalog } from "./ai.js";
 
 const ROOT = fileURLToPath(new URL("../public/", import.meta.url));
@@ -90,7 +90,7 @@ export function createAppServer() {
       if (req.method === "GET" && url.pathname === "/api/health") {
         return send(res, 200, { ok: true, service: "discord-control-activity", hostMetrics: "available", controlActions: "allowlisted" });
       }
-      if (req.method === "POST" && ["/api/session", "/api/logout", "/api/services/action", "/api/containers/action", "/api/projects/action", "/api/projects/logs", "/api/containers/logs", "/api/ai/chat"].includes(url.pathname) && !hasSameOrigin(req)) {
+      if (req.method === "POST" && ["/api/session", "/api/logout", "/api/services/action", "/api/containers/action", "/api/projects/action", "/api/projects/logs", "/api/containers/logs", "/api/power/action", "/api/ai/chat"].includes(url.pathname) && !hasSameOrigin(req)) {
         return send(res, 403, { error: "Cross-origin request rejected" });
       }
       if (req.method === "POST" && url.pathname === "/api/session") {
@@ -145,6 +145,14 @@ export function createAppServer() {
           enforceActionCooldown(session.userId);
           const result = await performServiceAction(serviceId, action);
           console.info(JSON.stringify({ event: "authorized_control", userId: session.userId, kind: "service", serviceId, action }));
+          return send(res, 200, result);
+        }
+        if (req.method === "POST" && url.pathname === "/api/power/action") {
+          const { action } = await readJson(req, 4096);
+          validatePowerAction(action);
+          enforceActionCooldown(session.userId);
+          const result = await performPowerAction(action);
+          console.info(JSON.stringify({ event: "authorized_control", userId: session.userId, kind: "power", action }));
           return send(res, 200, result);
         }
         if (req.method === "GET" && url.pathname === "/api/projects") {
