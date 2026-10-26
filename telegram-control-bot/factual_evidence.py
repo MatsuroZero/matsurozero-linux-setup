@@ -279,6 +279,54 @@ def _answer_matches_requested_metric(question, answer):
     answer_terms = _content_tokens(answer)
     return bool(metric_terms & answer_terms)
 
+def _requested_metric_value_mismatch(question, answer, records):
+    """Reject a requested quantity when its number belongs to another property.
+
+    Example: a planet's diameter number must not be relabelled as its moon count.
+    This narrow rule is a lexical safeguard, not semantic entailment.
+    """
+    metric_terms = _requested_metric_terms(question)
+    if not metric_terms:
+        return False
+    answer_sentences = [
+        sentence.strip()
+        for sentence in re.split(r"(?<=[.!?])\s+", str(answer or ""))
+        if sentence.strip()
+    ]
+    evidence_sentences = []
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        text = " ".join((str(record.get("title") or ""), str(record.get("excerpt") or "")))
+        evidence_sentences.extend(
+            sentence.strip()
+            for sentence in re.split(r"(?<=[.!?])\s+", text)
+            if sentence.strip()
+        )
+    for sentence in answer_sentences:
+        # Keep an adjacent, separately stated property from contaminating the
+        # number check for the requested metric.
+        clauses = re.split(r"\s+(?:and|but)\s+", sentence, flags=re.IGNORECASE)
+        for clause in clauses:
+            if not (metric_terms & _content_tokens(clause)):
+                continue
+            answer_numbers = _normalized_numeric_values(clause)
+            if not answer_numbers:
+                continue
+            property_sentences = [
+                source_sentence for source_sentence in evidence_sentences
+                if metric_terms & _content_tokens(source_sentence)
+            ]
+            if not property_sentences:
+                return True
+            property_values = set()
+            for source_sentence in property_sentences:
+                property_values.update(_normalized_numeric_values(source_sentence))
+            if not answer_numbers <= property_values:
+                return True
+    return False
+
+
 
 def _evidence_has_required_numeric_value(question, excerpt):
     """Require a number in a sentence that mentions the requested quantity.
@@ -555,6 +603,14 @@ def assess_answer_support(question, answer, evidence):
                     float(result.get("overlap", 0.0)),
                 ),
             )
+
+    if _requested_metric_value_mismatch(question, answer_text, records):
+        return {
+            "status": "insufficient_overlap",
+            "overlap": 0.0,
+            "matched_terms": [],
+            "reason": "requested_metric_value_mismatch",
+        }
 
     evidence_text = " ".join(
         str(item.get("title") or "") + " " + str(item.get("excerpt") or "")
