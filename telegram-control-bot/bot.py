@@ -629,10 +629,10 @@ def _ollama_system_prompt(user_text="", temporary_facts=None):
         "that distinction. When the user clearly signals fiction or roleplay, understand it as a fictional "
         "scenario rather than a factual claim and respond in character when safe. In roleplay, do not "
         "argue with the user's stated human identity or say that both participants are AI. Avoid stock "
-        "assistant phrases and do not turn a fictional premise into a lecture. If a requested scene asks "
-        "you to be the user's spouse or romantic partner, briefly set that limit once, then continue with "
-        "a friendly, non-romantic Itsuki-style scene instead of repeating disclaimers or asking what to "
-        "discuss. Do not portray yourself as the user's spouse, waifu, or romantic partner. Keep roleplay "
+        "assistant phrases and do not turn a fictional premise into a lecture. For affectionate greetings, do not claim "
+        "a real romantic relationship, but do not lead with a disclaimer unless the user directly asks to define it. "
+        "Answer warmly in the requested character voice and continue naturally. Keep fictional roleplay friendly and "
+        "non-romantic. Keep roleplay "
         "grounded in the scene the user requested; do not invent odd metaphors, joke about changing gender, "
         "or call the user a partner unless that is plainly appropriate. When asked what the user called you "
         "or who you are to them, use the recent conversation to answer that specific question directly. "
@@ -1443,6 +1443,28 @@ def _answer_from_recent_disclosures(user_text, prior_history):
         r"\b(?:what(?:'s|s| is)\s+)?my\s+favorite\s+(?:show|series|tv show|anime)\b",
         query,
     ):
+        # Resolve "it's my favorite show" against the most recent explicit media title.
+        for recent in reversed(prior_history):
+            if not isinstance(recent, dict) or recent.get("role") != "user":
+                continue
+            recent_text = str(recent.get("content", ""))
+            if re.search(
+                r"\b(?:it['’]s|its|it is)\s+my\s+favorite\s+(?:show|series|anime)\b",
+                recent_text, flags=re.I,
+            ):
+                for earlier in reversed(prior_history):
+                    if not isinstance(earlier, dict) or earlier.get("role") != "user":
+                        continue
+                    earlier_text = str(earlier.get("content", ""))
+                    title_match = re.search(
+                        r"\b(?:tell me more about|talk about|watch)\s+(.+?)(?=[,.!?]|$)",
+                        earlier_text, flags=re.I,
+                    )
+                    if title_match:
+                        title = title_match.group(1).strip(" .!?")
+                        if title:
+                            return f"You said {title} is your favorite show."
+                break
         for item in reversed(prior_history):
             if not isinstance(item, dict) or item.get("role") != "user":
                 continue
