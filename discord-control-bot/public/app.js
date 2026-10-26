@@ -1,5 +1,4 @@
-import { DiscordSDK } from "https://cdn.jsdelivr.net/npm/@discord/embedded-app-sdk@2.5.0/+esm";
-
+import { DiscordSDK } from "@discord/embedded-app-sdk";
 const $ = (selector) => document.querySelector(selector);
 const alertBox = $("#alert");
 let appId = "";
@@ -330,6 +329,16 @@ async function api(path, options = {}) {
   if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
   return data;
 }
+function withTimeout(promise, ms, message) {
+  let timer;
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(message)), ms);
+    }),
+  ]).finally(() => clearTimeout(timer));
+}
+
 async function start() {
   try {
     // SDK initialization happens only when launched inside Discord.
@@ -337,14 +346,26 @@ async function start() {
     appId = config.applicationId || "";
     const id = appId || new URLSearchParams(location.search).get("client_id") || "";
     if (!id) throw new Error("Set DISCORD_APPLICATION_ID on the Activity server.");
-    const discordSdk = new DiscordSDK(id);
-    await discordSdk.ready();
-    const { code } = await discordSdk.commands.authorize({
+    alert("Loading Discord SDK…");
+    const sdkModule = await withTimeout(
+      Promise.resolve({ DiscordSDK }),
+      12000,
+      "Discord SDK import timed out. Check the embedded browser connection."
+    );
+    const discordSdk = new sdkModule.DiscordSDK(id);
+    alert("Connecting to Discord…");
+    await withTimeout(
+      discordSdk.ready(),
+      12000,
+      "Discord SDK connection timed out. Close and relaunch the Activity."
+    );
+    alert("Requesting Discord authorization…");
+    const { code } = await withTimeout(discordSdk.commands.authorize({
       client_id: id,
       response_type: "code",
       prompt: "none",
       scope: ["identify"],
-    });
+    }), 12000, "Discord authorization timed out. Relaunch the Activity from Discord.");
     const result = await api("/api/session", { method: "POST", body: JSON.stringify({ code }) });
     const auth = await discordSdk.commands.authenticate({ access_token: result.access_token });
     if (!auth) throw new Error("Discord SDK authentication failed.");
@@ -390,9 +411,9 @@ async function start() {
     if (!liveRefreshTimer) liveRefreshTimer = setInterval(refreshLiveMetrics, 10000);
   } catch (error) {
     $("#user-state").textContent = "Session unavailable";
-    alert(error.message || "Could not initialize Discord session.", "error");
     drawCards(Object.entries(moduleInfo).filter(([key]) => key !== "overview").map(([id, item]) => ({ id, title: item[0], description: "Available after Discord authentication and local bridge setup." })));
     selectView("overview");
+    alert(error.message || "Could not initialize Discord session.", "error");
   }
 }
 $("#logout").addEventListener("click", async () => {

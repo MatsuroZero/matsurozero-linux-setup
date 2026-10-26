@@ -52,8 +52,48 @@ async function readJson(req, maxBytes = 16_384) {
 }
 function hasSameOrigin(req) {
   const origin = req.headers.origin;
-  if (typeof origin !== "string" || typeof req.headers.host !== "string") return false;
-  try { return new URL(origin).host === req.headers.host; } catch { return false; }
+  if (typeof origin !== "string") return false;
+
+  try {
+    const parsedOrigin = new URL(origin);
+
+    // Non-local browser origins must use HTTPS.
+    if (
+      parsedOrigin.protocol !== "https:" &&
+      parsedOrigin.hostname !== "localhost" &&
+      parsedOrigin.hostname !== "127.0.0.1"
+    ) return false;
+
+    // Explicitly trust only origins configured by the server owner.
+    const configuredOrigins = [
+      process.env.DISCORD_ALLOWED_ORIGINS || "",
+      process.env.DISCORD_ACTIVITY_ORIGIN || ""
+    ]
+      .join(",")
+      .split(",")
+      .map(value => value.trim())
+      .filter(Boolean);
+
+    for (const value of configuredOrigins) {
+      try {
+        const allowed = new URL(value);
+        if (
+          allowed.origin === parsedOrigin.origin &&
+          (allowed.protocol === "https:" ||
+            allowed.hostname === "localhost" ||
+            allowed.hostname === "127.0.0.1")
+        ) return true;
+      } catch {
+        // Ignore malformed configuration entries.
+      }
+    }
+
+    // Preserve ordinary same-host requests.
+    return typeof req.headers.host === "string" &&
+      parsedOrigin.host === req.headers.host;
+  } catch {
+    return false;
+  }
 }
 function safeHttpUrl(value) {
   try {
@@ -135,6 +175,14 @@ export function createAppServer() {
         return send(res, 200, { ok: true, service: "discord-control-activity", hostMetrics: "available", controlActions: "allowlisted" });
       }
       if (req.method === "POST" && ["/api/session", "/api/logout", "/api/services/action", "/api/containers/action", "/api/projects/action", "/api/projects/logs", "/api/containers/logs", "/api/power/action", "/api/links/credentials", "/api/commands/run", "/api/profiles/run", "/api/ai/chat", "/api/ai/memory/profile", "/api/ai/memory/remember", "/api/ai/memory/forget"].includes(url.pathname) && !hasSameOrigin(req)) {
+        console.warn("[origin-debug]", JSON.stringify({
+          path: url.pathname,
+          origin: req.headers.origin || null,
+          host: req.headers.host || null,
+          forwardedHost: req.headers["x-forwarded-host"] || null,
+          forwardedProto: req.headers["x-forwarded-proto"] || null,
+          secFetchSite: req.headers["sec-fetch-site"] || null
+        }));
         return send(res, 403, { error: "Cross-origin request rejected" });
       }
       if (req.method === "POST" && url.pathname === "/api/session") {

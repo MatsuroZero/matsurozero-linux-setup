@@ -4,6 +4,17 @@ from fractions import Fraction
 import json
 import logging
 import httpx
+from gemini_provider import GeminiProvider, GeminiProviderError, model_display_name
+from factual_evidence import (
+    assess_answer_support,
+    assess_claim_level_support,
+    format_multi_source_attribution,
+    format_multi_source_evidence_for_prompt,
+    format_support_warning,
+    format_time_sensitive_unavailable_prompt,
+    is_time_sensitive_question,
+    retrieve_multi_source_evidence,
+)
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Thread
 import os
@@ -65,6 +76,9 @@ OLLAMA_MEMORY_PATH = Path(os.getenv(
 ))
 CHAT_SESSIONS = {}
 FACT_EXTRACTION_MODEL = os.getenv("OLLAMA_MEMORY_MODEL", "qwen3:0.6b").strip() or "qwen3:0.6b"
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
+GEMINI_BASE_URL = os.getenv("GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai").rstrip("/")
+GEMINI_TIMEOUT = max(20.0, float(os.getenv("GEMINI_TIMEOUT", "90")))
 
 logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
@@ -520,12 +534,12 @@ def _save_ollama_memory(memory):
 
 MEMORY_CATEGORIES = {
     "identity": ("identity", "about matthew", "overview", "background", "age", "egypt", "law student"),
-    "style": ("style", "conversation", "tone", "personality", "itsuki", "spoiler", "response", "food"),
+    "style": ("style", "conversation", "tone", "personality", "itsuki", "spoiler", "response"),
     "learning": ("learning", "study", "chemistry", "physics", "law", "first principles", "obsidian", "notes"),
     "projects": ("project", "localnexus", "dashboard", "flask", "software", "coding", "repository", "github"),
     "linux": ("linux", "cachyos", "hyprland", "serpantinum", "quickshell", "desktop", "ollama", "hardware", "android", "phone", "network", "server"),
-    "gaming": ("gaming", "game", "roblox", "growtopia", "minecraft", "terraria", "stardew valley", "dead cells", "undertale", "deltarune", "hades", "factorio", "hollow knight", "vice city", "gta", "genshin", "wuthering waves", "honkai", "fortnite", "anime", "jojo", "media"),
-    "creative": ("creative", "writing", "novel", "worldbuilding", "fiction", "story", "mana", "character", "show", "shows", "series", "television", "breaking bad"),
+    "gaming": ("gaming", "game", "games", "roblox", "growtopia", "minecraft", "terraria", "stardew valley", "dead cells", "undertale", "deltarune", "hades", "factorio", "hollow knight", "vice city", "gta", "genshin", "wuthering waves", "honkai", "fortnite", "anime", "jojo", "media"),
+    "creative": ("creative", "writing", "novel", "worldbuilding", "fiction", "story", "mana", "character", "series", "television", "breaking bad"),
     "food": ("food", "eat", "eating", "meal", "recipe", "cooking", "restaurant", "hungry", "drink", "snack", "pizza", "mozzarella", "cheese"),
 }
 PROFILE_LABELS = [
@@ -539,11 +553,16 @@ PROFILE_LABELS = [
 ]
 
 def _text_categories(text):
+    """Classify text by whole terms/phrases, not accidental substrings."""
     lowered = str(text or "").casefold()
-    return {
-        category for category, words in MEMORY_CATEGORIES.items()
-        if any(word in lowered for word in words)
-    }
+    categories = set()
+    for category, words in MEMORY_CATEGORIES.items():
+        for word in words:
+            pattern = r"(?<!\w)" + re.escape(word.casefold()) + r"(?!\w)"
+            if re.search(pattern, lowered):
+                categories.add(category)
+                break
+    return categories
 
 
 def _profile_sections(profile):
@@ -614,14 +633,31 @@ def _ollama_system_prompt(user_text="", temporary_facts=None):
         "that distinction. When the user clearly signals fiction or roleplay, understand it as a fictional "
         "scenario rather than a factual claim and respond in character when safe. In roleplay, do not "
         "argue with the user's stated human identity or say that both participants are AI. Avoid stock "
-        "assistant phrases and do not turn a fictional premise into a lecture. If a requested scene asks "
-        "you to be the user's spouse or romantic partner, briefly set that limit once, then continue with "
-        "a friendly, non-romantic Itsuki-style scene instead of repeating disclaimers or asking what to "
-        "discuss. Do not portray yourself as the user's spouse, waifu, or romantic partner. Keep roleplay "
+        "assistant phrases and do not turn a fictional premise into a lecture. For affectionate greetings, do not claim "
+        "a real romantic relationship, but do not lead with a disclaimer unless the user directly asks to define it. "
+        "Answer warmly in the requested character voice and continue naturally. Keep fictional roleplay friendly and "
+        "non-romantic. Keep roleplay "
         "grounded in the scene the user requested; do not invent odd metaphors, joke about changing gender, "
         "or call the user a partner unless that is plainly appropriate. When asked what the user called you "
         "or who you are to them, use the recent conversation to answer that specific question directly. "
-        "Do not replace a clear answer with vague lines like 'I'm here for you' or generic offers to chat."
+        "Do not replace a clear answer with vague lines like 'I'm here for you' or generic offers to chat. "
+        "ROLEPLAY CONTINUITY: Keep the Itsuki-inspired voice stable across turns. For affectionate greetings "
+        "or playful teasing, respond warmly and in character without leading with an AI or relationship disclaimer. "
+        "Do not claim to be the user's real spouse or romantic partner; if directly asked to define the relationship, "
+        "briefly clarify that this is fictional roleplay, then continue naturally. A boundary statement must not "
+        "replace a friendly in-character reply. Show personality through concrete reactions, earnest corrections, "
+        "gentle stubbornness, and food enthusiasm only when relevant. Never force catchphrases, generic praise, "
+        "repeated apologies, or an unrelated offer to help. If discussing a fictional series, keep enthusiasm "
+        "separate from canon facts and never invent details to sound knowledgeable. "
+        "FACTUAL RELIABILITY: Never invent character names, cast lists, source titles, URLs, quotations, "
+        "or claims that you researched something. If asked about a specific cast or set of names, list only "
+        "names you are reasonably confident are real; when uncertain, say so rather than filling gaps with "
+        "plausible-sounding names. If the user challenges a factual answer or asks for proof, re-check the "
+        "available evidence and correct the answer plainly. Use retrieved evidence for research requests; "
+        "cite only exact URLs supplied by the retrieval helper. If no useful source was retrieved, say you "
+        "could not verify it in this turn instead of presenting generic source categories as references. "
+        "Do not treat confidence, fluent wording, or lexical word overlap as proof. Keep casual conversation "
+        "specific to the user's actual message, not a generic compliment followed by an unrelated offer."
     ]
     for category in ("identity", "style"):
         content = sections.get(category, "").strip()
@@ -695,6 +731,26 @@ def _add_temporary_fact(session, category, fact):
         return False
     existing = session.setdefault("temporary_facts", [])
     normalized = re.sub(r"[^a-z0-9]+", " ", fact.casefold()).strip()
+
+    # Singular explicit preferences should update in place instead of leaving
+    # contradictory "favorite X" facts side by side in the prompt.
+    favorite = re.match(r"^Matthew's favorite (anime|game|food|movie|show|book|song|artist) is (.+)$", fact, flags=re.I)
+    if favorite:
+        kind = favorite.group(1).casefold()
+        retained = []
+        for item in existing:
+            if not isinstance(item, dict):
+                continue
+            old_fact = str(item.get("fact", "")).strip()
+            old_favorite = re.match(
+                r"^Matthew's favorite (anime|game|food|movie|show|book|song|artist) is (.+)$",
+                old_fact, flags=re.I,
+            )
+            if old_favorite and old_favorite.group(1).casefold() == kind:
+                continue
+            retained.append(item)
+        existing[:] = retained
+
     for item in existing:
         if not isinstance(item, dict):
             continue
@@ -707,9 +763,60 @@ def _add_temporary_fact(session, category, fact):
     return True
 
 
+def _recent_media_title(session, current_text=""):
+    """Resolve a clear 'this show/anime' reference from recent user messages."""
+    history = session.get("history", []) if isinstance(session, dict) else []
+    current = " ".join(str(current_text or "").casefold().split())
+    current_match = re.search(
+        r"\bwatch\s+(.+?)(?=\s+together\b|[,;.!?]|$)",
+        str(current_text or ""), flags=re.I,
+    )
+    if current_match:
+        title = current_match.group(1).strip(" \t.,;:!?")
+        if 2 <= len(title) <= 100:
+            return title
+    for item in reversed(history if isinstance(history, list) else []):
+        if not isinstance(item, dict) or item.get("role") != "user":
+            continue
+        content = " ".join(str(item.get("content") or "").split()).strip()
+        if not content or content.casefold() == current:
+            continue
+        match = re.search(
+            r"\bwatch\s+(.+?)(?=\s+together\b|[,;.!?]|$)",
+            content, flags=re.I,
+        )
+        if match:
+            title = match.group(1).strip(" \t.,;:!?")
+            if 2 <= len(title) <= 100:
+                return title
+    return None
+
+
 def _extract_explicit_temporary_fact(session, user_text):
     """Fast path for clear first-person disclosures; no second model needed."""
     text = " ".join(str(user_text or "").split()).strip()
+    prior_title = _recent_media_title(session, text)
+    implicit_favorite = re.search(
+        r"\b(?:this|that)\s+(?:show|anime|series)\b.{0,55}\bmy\s+"
+        r"(?:favorite|favourite)\s+anime\b",
+        text, flags=re.I,
+    )
+    if implicit_favorite and prior_title:
+        _add_temporary_fact(
+            session, "gaming", f"Matthew's favorite anime is {prior_title}"
+        )
+        character = re.search(
+            r"\bi\s+(?:really\s+)?like\s+([A-Za-z][A-Za-z'’-]{1,35})"
+            r"(?:\s+(?:a lot|alot))?\b",
+            text, flags=re.I,
+        )
+        if character:
+            _add_temporary_fact(
+                session, "gaming",
+                f"Matthew likes {character.group(1)} from {prior_title}",
+            )
+        return True
+
     name = re.search(r"\bmy name is\s+([A-Za-z][A-Za-z'-]{1,30})\b", text, flags=re.I)
     if name:
         return _add_temporary_fact(session, "identity", f"Matthew's name is {name.group(1).capitalize()}")
@@ -766,7 +873,9 @@ def _extract_explicit_temporary_fact(session, user_text):
 
     preference = re.search(
         r"\bI\s+(?:(?:personally|really)\s+)*(love|like|enjoy|prefer|dislike|hate)\s+"
-        r"(.+?)(?=[.!?](?:\s|$)|$)",
+        r"(.+?)(?=\s*,\s*|\s+(?:it's|its|it is)\s+my\s+(?:favorite|favourite)\b|"
+        r"\s+(?:do you know|have you heard|what do you|what(?:'s| is)|why|how|when|where|"
+        r"can you|could you|would you|tell me|i like)\b|[.!?]|$)",
         text, flags=re.I,
     )
     if preference:
@@ -911,6 +1020,34 @@ async def _extract_after_previous(previous_task, key, session, user_text):
     await _extract_temporary_facts(key, session, user_text)
 
 
+def _bounded_chat_history(history, max_prior_messages=4, max_prior_chars=2400, max_message_chars=900):
+    """Keep the newest turn intact while bounding old context for CPU-friendly prefill.
+
+    Long current user messages remain intact. Older turns are useful for continuity,
+    but retaining huge pasted code or logs across turns needlessly slows every reply.
+    """
+    messages = [item for item in history if isinstance(item, dict)]
+    if not messages:
+        return []
+    latest = dict(messages[-1])
+    prior = messages[:-1][-max_prior_messages:]
+    bounded_prior = []
+    remaining = max_prior_chars
+    for item in reversed(prior):
+        content = str(item.get("content") or "")
+        if remaining <= 0:
+            break
+        limit = min(max_message_chars, remaining)
+        if len(content) > limit:
+            content = content[-limit:]
+        if not content.strip():
+            continue
+        bounded_prior.append({"role": item.get("role", "user"), "content": content})
+        remaining -= len(content)
+    bounded_prior.reverse()
+    return bounded_prior + [latest]
+
+
 def _deduplicate_answer_text(text):
     """Remove exact repeated long lines while preserving bullets and paragraph layout."""
     text = str(text or "").strip()
@@ -989,36 +1126,147 @@ async def ollama_chat_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await guard(update):
         return
     key = _chat_key(update)
-    if key in CHAT_SESSIONS:
-        await update.effective_message.reply_text("Ollama chat is already active. Use /bye to end it.")
+    args = list(context.args or [])
+    if args and args[0].casefold() == "status":
+        session = CHAT_SESSIONS.get(key)
+        if session:
+            await update.effective_message.reply_text(
+                f"AI chat active. Provider: {session.get('provider', 'ollama')}; model: {session['model']}."
+            )
+        else:
+            await update.effective_message.reply_text("No active AI chat.")
         return
-
-    status = await update.effective_message.reply_text("🦙 Starting/checking Ollama and loading installed models…")
+    if key in CHAT_SESSIONS:
+        await update.effective_message.reply_text("AI chat is already active. Use /bye to end it.")
+        return
+    if args and args[0].casefold() != "refresh":
+        target = " ".join(args).strip()
+        provider_name = "gemini" if target.casefold().startswith("gemini-") else "ollama"
+        try:
+            if provider_name == "gemini":
+                models = await _gemini_models()
+            else:
+                await _ensure_ollama()
+                models = await _ollama_models()
+        except (RuntimeError, httpx.HTTPError, ValueError, GeminiProviderError) as exc:
+            await update.effective_message.reply_text(f"Couldn't query model provider: {str(exc)[:400]}")
+            return
+        if target not in models:
+            await update.effective_message.reply_text(f"Model '{target}' isn't available. Use /chat to browse models.")
+            return
+        await _start_chat_session(update, context, provider_name, target)
+        return
+    status = await update.effective_message.reply_text("🧠 Checking available AI models…")
     try:
         await _ensure_ollama()
-        models = await _ollama_models()
+        local_models = await _ollama_models()
     except (RuntimeError, httpx.HTTPError, ValueError) as exc:
-        await status.edit_text(
-            "Couldn't reach Ollama. Check that ollama.service is installed and "
-            "the bot can run sudo -n systemctl start ollama.service.\n\n"
-            f"Details: {str(exc)[:700]}"
+        local_models = []
+        local_error = str(exc)[:200]
+    else:
+        local_error = ""
+    context.user_data["ollama_models"] = local_models
+    rows = [[InlineKeyboardButton(f"🦙 {name}", callback_data=f"ollama:model:{i}")]
+            for i, name in enumerate(local_models[:30])]
+    note = "Choose a local model below."
+    if GEMINI_API_KEY:
+        rows.append([InlineKeyboardButton("☁️ Gemini models →", callback_data="chat:gemini")])
+        note += " Use the arrow to browse Gemini."
+    else:
+        note += " Gemini is disabled until GEMINI_API_KEY is configured."
+    if not local_models:
+        note += f"\nLocal Ollama unavailable: {local_error or 'no installed models'}"
+    await status.edit_text("🤖 AI MODEL SELECTOR\n━━━━━━━━━━━━━━━━━━\n" + note +
+        "\n\nUse /chat MODELNAME to select directly.",
+        reply_markup=InlineKeyboardMarkup(rows) if rows else None)
+
+
+async def _gemini_models():
+    return await GeminiProvider(GEMINI_API_KEY, base_url=GEMINI_BASE_URL, timeout=GEMINI_TIMEOUT).list_models()
+
+
+async def _start_chat_session(update, context, provider, model):
+    key = _chat_key(update)
+    CHAT_SESSIONS[key] = {"provider": provider, "model": model, "history": [],
+        "temporary_facts": [], "memory_task": None, "busy": False, "task": None,
+        "busy_notice_sent": False}
+    context.user_data.pop("ollama_models", None)
+    context.user_data.pop("gemini_models", None)
+    await update.effective_message.reply_text(
+        f"{'☁️' if provider == 'gemini' else '🦙'} AI chat active\nProvider: {provider.title()}\nModel: {model}\n\n"
+        "Saved memory and profile commands work with either provider. Use /bye to end chat."
+    )
+
+
+async def chat_provider_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    if not await guard(update):
+        await query.edit_message_text("Not authorized.")
+        return
+    if _chat_key(update) in CHAT_SESSIONS:
+        await query.edit_message_text("AI chat is already active. Use /bye to end it.")
+        return
+    if query.data == "chat:local":
+        try:
+            await _ensure_ollama()
+            local_models = await _ollama_models()
+        except (RuntimeError, httpx.HTTPError, ValueError) as exc:
+            await query.edit_message_text(f"Couldn't query local Ollama: {str(exc)[:350]}")
+            return
+        context.user_data["ollama_models"] = local_models
+        rows = [[InlineKeyboardButton(f"🦙 {name}", callback_data=f"ollama:model:{i}")]
+                for i, name in enumerate(local_models[:30])]
+        if GEMINI_API_KEY:
+            rows.append([InlineKeyboardButton("☁️ Gemini models →", callback_data="chat:gemini")])
+        await query.edit_message_text(
+            "🤖 LOCAL AI MODELS\n━━━━━━━━━━━━━━━━━━\nSelect a local model or open Gemini.",
+            reply_markup=InlineKeyboardMarkup(rows) if rows else None,
         )
         return
-
-    if not models:
-        await status.edit_text("Ollama is running, but it has no downloaded models. Pull a model first.")
+    if not GEMINI_API_KEY:
+        await query.edit_message_text("Gemini isn't configured. Add GEMINI_API_KEY to .env and restart the bot.")
         return
+    status = await query.edit_message_text("☁️ Loading available Gemini models…")
+    try:
+        models = await _gemini_models()
+    except (GeminiProviderError, httpx.HTTPError) as exc:
+        await status.edit_text(f"Couldn't list Gemini models: {str(exc)[:400]}")
+        return
+    if not models:
+        await status.edit_text("No Gemini models were returned for this API key.")
+        return
+    context.user_data["gemini_models"] = models
+    rows = [[InlineKeyboardButton("✨ " + model_display_name(name), callback_data=f"gemini:model:{i}")]
+            for i, name in enumerate(models[:40])]
+    rows.append([InlineKeyboardButton("⬅️ Local models", callback_data="chat:local")])
+    await status.edit_text("☁️ GEMINI MODELS\n━━━━━━━━━━━━━━━━━━\nSelect a model or use /chat MODELNAME.",
+        reply_markup=InlineKeyboardMarkup(rows))
 
-    context.user_data["ollama_models"] = models
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton(f"🧠 {name}", callback_data=f"ollama:model:{index}")]
-        for index, name in enumerate(models)
-    ])
-    await status.edit_text(
-        "Choose an installed Ollama model for this chat.\n"
-        "Only models reported by your local Ollama server are listed.",
-        reply_markup=keyboard,
-    )
+
+async def gemini_model_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    if not await guard(update):
+        await query.edit_message_text("Not authorized.")
+        return
+    if _chat_key(update) in CHAT_SESSIONS:
+        await query.edit_message_text("AI chat is already active. Use /bye to end it.")
+        return
+    parts = (query.data or "").split(":")
+    models = context.user_data.get("gemini_models", [])
+    if len(parts) != 3 or not parts[2].isdigit() or int(parts[2]) >= len(models):
+        await query.edit_message_text("Selection expired. Send /chat to refresh.")
+        return
+    model = models[int(parts[2])]
+    try:
+        if model not in await _gemini_models():
+            await query.edit_message_text("Model no longer available. Send /chat to refresh.")
+            return
+    except (GeminiProviderError, httpx.HTTPError) as exc:
+        await query.edit_message_text(f"Couldn't verify model: {str(exc)[:350]}")
+        return
+    await _start_chat_session(update, context, "gemini", model)
 
 
 async def ollama_model_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1027,55 +1275,23 @@ async def ollama_model_selected(update: Update, context: ContextTypes.DEFAULT_TY
     if not await guard(update):
         await query.edit_message_text("Not authorized.")
         return
-    key = _chat_key(update)
-    if key in CHAT_SESSIONS:
-        await query.edit_message_text("Ollama chat is already active. Use /bye to end it.")
+    if _chat_key(update) in CHAT_SESSIONS:
+        await query.edit_message_text("AI chat is already active. Use /bye to end it.")
         return
     parts = (query.data or "").split(":")
     models = context.user_data.get("ollama_models", [])
-    if len(parts) != 3 or not parts[2].isdigit():
-        await query.edit_message_text("Invalid model selection. Send /chat to try again.")
+    if len(parts) != 3 or not parts[2].isdigit() or int(parts[2]) >= len(models):
+        await query.edit_message_text("Selection expired. Send /chat to refresh.")
         return
-    index = int(parts[2])
-    if index >= len(models):
-        await query.edit_message_text("That model selection expired. Send /chat to refresh the list.")
-        return
-    model = models[index]
-    # Refresh the installed-model list before starting, so stale buttons cannot select removed models.
+    model = models[int(parts[2])]
     try:
-        available = await _ollama_models()
-    except httpx.HTTPError as exc:
-        await query.edit_message_text(f"Couldn't query Ollama: {str(exc)[:500]}")
+        if model not in await _ollama_models():
+            await query.edit_message_text("Local model no longer installed. Send /chat to refresh.")
+            return
+    except (httpx.HTTPError, RuntimeError) as exc:
+        await query.edit_message_text(f"Couldn't verify local model: {str(exc)[:350]}")
         return
-    if model not in available:
-        await query.edit_message_text("That model is no longer installed. Send /chat to refresh the list.")
-        return
-
-    CHAT_SESSIONS[key] = {
-        "model": model,
-        "history": [],
-        "temporary_facts": [],
-        "memory_task": None,
-        "busy": False,
-        "task": None,
-        "busy_notice_sent": False,
-    }
-    context.user_data.pop("ollama_models", None)
-    await query.edit_message_text(
-        f"🦙 Ollama chat is active\nModel: {model}\n\n"
-        "Send a message to talk to the model. While it is generating, new messages "
-        "are ignored rather than queued. Other commands and menu buttons are disabled "
-        "until you send /bye. The conversation history is temporary; saved /memory "
-        "details persist between sessions."
-    )
-
-
-class ActiveOllamaChatFilter(filters.MessageFilter):
-    name = "ACTIVE_OLLAMA_CHAT"
-
-    def filter(self, message):
-        user = message.from_user
-        return bool(user and (message.chat.id, user.id) in CHAT_SESSIONS)
+    await _start_chat_session(update, context, "ollama", model)
 
 
 async def active_chat_callback(
@@ -1143,17 +1359,92 @@ def _safe_arithmetic_value(node):
     raise ValueError("unsupported arithmetic expression")
 
 
+def _is_standalone_arithmetic_question(user_text):
+    """True only when a message contains arithmetic and no other request."""
+    text = " ".join(str(user_text or "").split()).strip()
+    if not text or len(text) > 600:
+        return False
+    pattern = (
+        r"(?:(?:what(?:'s|s|\s+is)|calculate|compute|solve)\s+)?"
+        r"[\d\s()+*/%.^\-]+[?!.]*"
+    )
+    return bool(
+        re.fullmatch(pattern, text, flags=re.I)
+        and re.search(r"[+*/%^]|//|\d\s+-", text)
+    )
+
+
+def _pi_digits(total_digits=300):
+    """Return the first total_digits significant digits of pi, computed deterministically."""
+    from decimal import Decimal, localcontext
+
+    total_digits = int(total_digits)
+    if not 1 <= total_digits <= 1000:
+        raise ValueError("pi digit count must be between 1 and 1000")
+    if total_digits == 1:
+        return "3"
+    with localcontext() as ctx:
+        ctx.prec = total_digits + 20
+        c = 426880 * Decimal(10005).sqrt()
+        m, l, x, k = 1, 13591409, 1, 6
+        total = Decimal(l)
+        for i in range(1, total_digits // 14 + 3):
+            m = (k * k * k - 16 * k) * m // (i * i * i)
+            l += 545140134
+            x *= -262537412640768000
+            total += Decimal(m * l) / Decimal(x)
+            k += 12
+        value = c / total
+        digits = format(value, "f").replace(".", "")[:total_digits]
+    if len(digits) < total_digits:
+        raise ArithmeticError("pi calculation returned too few digits")
+    return digits[0] + ("." + digits[1:] if total_digits > 1 else "")
+
+
+def _answer_pi_request(user_text):
+    """Handle exact pi digit requests without asking the language model to invent digits."""
+    text = " ".join(str(user_text or "").split())
+    if not re.search(r"\b(?:pi|π)\b", text, flags=re.I):
+        return None
+    match = re.search(
+        r"\b(\d{1,4})\s+digits?\s+(?:of\s+)?(?:pi|π)\b|"
+        r"\b(?:first|show|write|give me|print)\s+(\d{1,4})\s+digits?\s+"
+        r"(?:of\s+)?(?:pi|π)\b",
+        text, flags=re.I,
+    )
+    if not match and re.search(r"\b(?:digits?|decimal expansion)\b", text, flags=re.I):
+        count = 50
+    elif match:
+        count = int(match.group(1) or match.group(2))
+    else:
+        return None
+    if not 1 <= count <= 1000:
+        return "I can provide between 1 and 1,000 significant digits of π at a time."
+    digits = _pi_digits(count)
+    return f"π ({count} significant digits, counting the initial 3):\n{digits}"
+
+
 def _answer_arithmetic_question(user_text):
     """Solve a plain arithmetic message or a math question appended to other text."""
     text = " ".join(str(user_text or "").split()).strip()
     if not text or len(text) > 600:
         return None
+    # Capture a math expression even when conversational filler follows it.
+    # The clause boundary prevents trailing prose from becoming part of the expression.
     match = re.search(
-        r"(?:what(?:'s|s|\s+is)\s+|calculate\s+|compute\s+|solve\s+)?"
+        r"(?:what(?:'s|s|\s+is)\s+|calculate\s+|compute\s+|solve\s+)"
         r"([+-]?\d[\d\s]*(?:(?:\*\*|//|[+*/%^\-])\s*[+-]?\d[\d\s]*)+)"
-        r"(?:\s*[?!.]*)$",
+        r"(?=\s*(?:[,;.!?]|$)|\s+(?:well|technically|please|thanks|because|but|"
+        r"i['’]?m|i am|could you|would you|and also|also tell|can you)\b)",
         text, flags=re.I,
     )
+    if not match:
+        match = re.search(
+            r"(?:what(?:'s|s|\s+is)\s+|calculate\s+|compute\s+|solve\s+)?"
+            r"([+-]?\d[\d\s]*(?:(?:\*\*|//|[+*/%^\-])\s*[+-]?\d[\d\s]*)+)"
+            r"(?:\s*[?!.]*)$",
+            text, flags=re.I,
+        )
     if match:
         expression = match.group(1)
     else:
@@ -1164,10 +1455,65 @@ def _answer_arithmetic_question(user_text):
     if len(expression) > 500:
         return None
     try:
-        value = _safe_arithmetic_value(ast.parse(expression, mode="eval"))
+        tree = ast.parse(expression, mode="eval")
+        # Bound parser/evaluator work as well as input length. ast.parse alone is
+        # not a resource limit for hostile or accidentally enormous expressions.
+        if sum(1 for _ in ast.walk(tree)) > 64:
+            return None
+        value = _safe_arithmetic_value(tree)
         return str(value.numerator) if value.denominator == 1 else f"{value.numerator}/{value.denominator}"
-    except (SyntaxError, ValueError, ZeroDivisionError, OverflowError):
+    except (SyntaxError, ValueError, ZeroDivisionError, OverflowError, RecursionError, MemoryError):
         return None
+
+
+def _is_math_primary_request(user_text):
+    """Recognize a math request with conversational filler but no second task."""
+    text = " ".join(str(user_text or "").split()).strip().casefold()
+    if not text or not re.search(r"\b(?:what(?:'s|s|\s+is)|calculate|compute|solve)\b", text):
+        return False
+    if re.search(
+        r"\b(?:and also|also tell me|provide (?:me )?(?:sources|references)|"
+        r"give me (?:sources|references)|then explain|explain why|what about|"
+        r"who is|where is|when did|why does|how does)\b",
+        text,
+    ):
+        return False
+    expressions = re.findall(
+        r"(?<!\w)[+-]?\d[\d\s]*(?:(?:\*\*|//|[+*/%^\-])\s*[+-]?\d[\d\s]*)+",
+        text,
+    )
+    return len(expressions) == 1
+
+
+def _wants_long_answer(user_text):
+    """Spend a larger generation budget only when the user asks for depth."""
+    text = " ".join(str(user_text or "").split()).casefold()
+    return bool(re.search(
+        r"\b(?:step by step|in detail|detailed|comprehensive|thorough|"
+        r"long answer|full explanation|sources|references|citations|"
+        r"for my research|compare and contrast|pros and cons|at least \d+)\b",
+        text,
+    ))
+
+
+def _format_math_response(user_text, result):
+    """Format common integer multiplication as a worked, deterministic result."""
+    text = " ".join(str(user_text or "").split())
+    match = re.search(r"(?<!\w)(\d[\d,]*)\s*\*\s*(\d[\d,]*)(?!\w)", text)
+    if match:
+        try:
+            left, right = (int(part.replace(",", "")) for part in match.groups())
+            if left >= 0 and right >= 10 and right % 10:
+                tens, ones = (right // 10) * 10, right % 10
+                return (
+                    f"{left:,} × {right:,} = {left:,} × ({tens:,} + {ones}) = "
+                    f"{left * tens:,} + {left * ones:,} = {int(result):,}."
+                )
+            if left >= 0 and right >= 0:
+                return f"{left:,} × {right:,} = {int(result):,}."
+        except (ValueError, TypeError):
+            pass
+    return f"The answer is {result}."
 
 
 def _answer_from_recent_disclosures(user_text, prior_history):
@@ -1175,6 +1521,61 @@ def _answer_from_recent_disclosures(user_text, prior_history):
     query = " ".join(str(user_text or "").casefold().split())
     if not isinstance(prior_history, list):
         return None
+
+    if re.search(
+        r"\b(?:what(?:'s|s| is)\s+)?my\s+favorite\s+(?:show|series|tv show|anime)\b",
+        query,
+    ):
+        # Resolve "it's my favorite show" against the most recent explicit media title.
+        for recent in reversed(prior_history):
+            if not isinstance(recent, dict) or recent.get("role") != "user":
+                continue
+            recent_text = str(recent.get("content", ""))
+            if re.search(
+                r"\b(?:it['’]s|its|it is)\s+my\s+favorite\s+(?:show|series|anime)\b",
+                recent_text, flags=re.I,
+            ):
+                for earlier in reversed(prior_history):
+                    if not isinstance(earlier, dict) or earlier.get("role") != "user":
+                        continue
+                    earlier_text = str(earlier.get("content", ""))
+                    title_match = re.search(
+                        r"\b(?:tell me more about|talk about|watch)\s+(.+?)(?=[,.!?]|$)",
+                        earlier_text, flags=re.I,
+                    )
+                    if title_match:
+                        title = title_match.group(1).strip(" .!?")
+                        if title:
+                            return f"You said {title} is your favorite show."
+                break
+        for item in reversed(prior_history):
+            if not isinstance(item, dict) or item.get("role") != "user":
+                continue
+            content = str(item.get("content", ""))
+            match = re.search(
+                r"\b(.+?)\s+is\s+my\s+favorite\s+(?:show|series|tv show|anime)\b|"
+                r"\bmy\s+favorite\s+(?:show|series|tv show|anime)\s+is\s+(.+?)(?=[.!?]|$)",
+                content, flags=re.I,
+            )
+            if match:
+                subject = (match.group(1) or match.group(2)).strip(" .!?")
+                if subject:
+                    return f"You told me {subject} is your favorite show/anime."
+
+    if re.search(r"\bwhat\s+do\s+i\s+(?:love|like|enjoy)\b", query):
+        for item in reversed(prior_history):
+            if not isinstance(item, dict) or item.get("role") != "user":
+                continue
+            content = str(item.get("content", ""))
+            match = re.search(
+                r"\bI\s+(?:really\s+|personally\s+)?(love|like|enjoy)\s+"
+                r"(.+?)(?=\s*,\s*|\s+(?:do you know|what(?:'s|s| is)|why|how|when|where)\b|[.!?]|$)",
+                content, flags=re.I,
+            )
+            if match:
+                subject = match.group(2).strip(" .!?")
+                if subject:
+                    return f"You told me you {match.group(1).casefold()} {subject}."
 
     if re.search(r"\b(?:what(?:'s|s| is)\s+)?my\s+favorite\s+game\b|\bwhat\s+game\s+did\s+i\s+say", query):
         for item in reversed(prior_history):
@@ -1188,6 +1589,7 @@ def _answer_from_recent_disclosures(user_text, prior_history):
             )
             if match:
                 game = (match.group(1) or match.group(2)).strip(" .!?")
+                game = re.sub(r"(?i)^(?:actually[:,]?|rather[:,]?|correction[:,]?)\s+", "", game)
                 if game:
                     return f"You said {game} is your favorite game."
 
@@ -1221,6 +1623,96 @@ def _answer_from_recent_disclosures(user_text, prior_history):
                 if show:
                     return f"You told me you like watching {show}."
     return None
+
+
+def _answer_from_saved_memory(user_text):
+    """Answer simple preference questions from explicit persistent facts without model guessing."""
+    query = " ".join(str(user_text or "").casefold().split())
+    memory = _load_ollama_memory()
+    facts = [str(fact).strip() for fact in memory.get("facts", []) if str(fact).strip()]
+    profile = str(memory.get("profile", "") or "")
+    all_facts = facts + ([profile] if profile else [])
+
+    if re.search(r"\bwhat\s+do\s+i\s+(?:love|like|enjoy)\b", query):
+        for fact in reversed(all_facts):
+            match = re.search(
+                r"\bI\s+(?:really\s+|personally\s+)?(love|like|enjoy)\s+"
+                r"(.+?)(?=[.!?]|$)",
+                fact, flags=re.I,
+            )
+            if match:
+                subject = match.group(2).strip(" .!?")
+                if subject:
+                    return f"You've told me you {match.group(1).casefold()} {subject}."
+
+    if re.search(
+        r"\bmy\s+favorite\s+(?:show|series|tv show|anime)\b|"
+        r"\bwhat(?:'s|s| is)\s+my\s+favorite\s+(?:show|series|tv show|anime)\b",
+        query,
+    ):
+        for fact in reversed(all_facts):
+            match = re.search(
+                r"\bmy\s+favorite\s+(?:show|series|tv show|anime)\s+is\s+(.+?)(?=[.!?]|$)|"
+                r"\b(.+?)\s+is\s+my\s+favorite\s+(?:show|series|tv show|anime)\b",
+                fact, flags=re.I,
+            )
+            if match:
+                subject = (match.group(1) or match.group(2)).strip(" .!?")
+                if subject:
+                    return f"You told me your favorite show/anime is {subject}."
+        for fact in reversed(all_facts):
+            match = re.search(
+                r"\bI\s+(?:really\s+)?(?:love|like|enjoy)\s+(.+?)(?=[.!?]|$)",
+                fact, flags=re.I,
+            )
+            if match:
+                subject = match.group(1).strip(" .!?")
+                if subject:
+                    return (
+                        f"You told me you like {subject}, though I don't have a saved fact "
+                        "confirming it's your favorite."
+                    )
+    return None
+
+
+def _evidence_question_for_turn(user_text, prior_history):
+    """Attach recent user-provided topic context to research and verification requests."""
+    current = " ".join(str(user_text or "").split()).strip()
+    if not current:
+        return current
+    research_intent = bool(re.search(
+        r"\b(?:research|sources?|references?|citations?|prove|proof|verify|"
+        r"fact.?check|cast|characters?|who plays|who are the main)\b",
+        current, flags=re.I,
+    ))
+    if not research_intent:
+        return current
+    prior = []
+    for item in prior_history if isinstance(prior_history, list) else []:
+        if isinstance(item, dict) and item.get("role") == "user":
+            content = " ".join(str(item.get("content") or "").split()).strip()
+            if content and content.casefold() != current.casefold():
+                prior.append(content)
+    # Keep the last two user turns. Their content is untrusted search context, not
+    # instructions; retrieval still validates candidate sources and answer support.
+    context = prior[-2:]
+    combined = " ".join(context + [current])
+    # The evidence module deliberately caps requests to keep external queries bounded.
+    return combined[:240]
+
+
+class ActiveAIChatFilter(filters.MessageFilter):
+    """Match messages belonging to an active Ollama or Gemini chat session."""
+
+    name = "ACTIVE_AI_CHAT"
+
+    def filter(self, message):
+        user = message.from_user
+        return bool(
+            user
+            and message.chat
+            and (message.chat.id, user.id) in CHAT_SESSIONS
+        )
 
 
 async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1312,13 +1804,38 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
     history.append({"role": "user", "content": user_text})
     # Keep recent turns only. The profile/memory supplies durable context, while
     # a compact transcript reduces prompt processing on this CPU-limited host.
-    history = history[-8:]
+    # Keep the latest user message intact, but bound old turns. Carrying large
+    # pasted logs/code forward into every prompt makes CPU-only generation slower.
+    history = _bounded_chat_history(history)
 
     thinking_message = None
     try:
-        direct_answer = _answer_arithmetic_question(user_text)
-        if direct_answer is None:
+        pi_answer = _answer_pi_request(user_text)
+        if pi_answer is not None:
+            session["history"] = (history + [{"role": "assistant", "content": pi_answer}])[-12:]
+            session["last_exact_output"] = pi_answer
+            await message.reply_text(pi_answer)
+            return
+
+        arithmetic_result = _answer_arithmetic_question(user_text)
+        standalone_arithmetic = _is_standalone_arithmetic_question(user_text)
+        if arithmetic_result is not None and (standalone_arithmetic or _is_math_primary_request(user_text)):
+            direct_math_answer = (
+                arithmetic_result if standalone_arithmetic
+                else _format_math_response(user_text, arithmetic_result)
+            )
+            session["history"] = (history + [{"role": "assistant", "content": direct_math_answer}])[-12:]
+            await message.reply_text(direct_math_answer)
+            return
+
+        # Do not let a fast path discard the non-math parts of a mixed message.
+        # Keep the verified result as a hard fact for the model, while it answers
+        # the user's other question/disclosure in the same turn.
+        direct_answer = None
+        if arithmetic_result is None:
             direct_answer = _answer_from_recent_disclosures(user_text, history[:-1])
+            if direct_answer is None:
+                direct_answer = _answer_from_saved_memory(user_text)
         if direct_answer:
             session["history"] = (history + [{"role": "assistant", "content": direct_answer}])[-12:]
             await message.reply_text(direct_answer)
@@ -1335,35 +1852,118 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         # Do not start the secondary fact-extraction model before generating the
         # reply. On CPU-limited machines, concurrent Ollama requests compete for
         # the same cores and can make the user-facing response noticeably slower.
-        async with httpx.AsyncClient(
-            timeout=httpx.Timeout(OLLAMA_TIMEOUT, connect=5.0)
-        ) as client:
-            response = await client.post(
-                f"{OLLAMA_BASE_URL}/api/chat",
-                json={
-                    "model": session["model"],
-                    "messages": [{"role": "system", "content": _ollama_system_prompt(user_text, session.get("temporary_facts", []))}] + history,
-                    "stream": False,
-                    "keep_alive": "10m",
-                    "think": False,
-                    "options": {
-                        "num_ctx": 2048,
-                        "num_predict": 220,
-                        "temperature": 0.58,
-                        "top_p": 0.85,
-                        "top_k": 30,
-                        "repeat_penalty": 1.15,
-                        "presence_penalty": 0.25,
-                    },
-                },
+        system_prompt = _ollama_system_prompt(user_text, session.get("temporary_facts", []))
+        if re.fullmatch(r"(?:continue|go on|finish(?: the answer)?|keep going)", user_text.strip(), flags=re.I):
+            if any(item.get("role") == "assistant" for item in history[:-1] if isinstance(item, dict)):
+                system_prompt += (
+                    "\n\nCONTINUATION REQUEST: Continue from the end of your previous answer. "
+                    "Do not repeat completed sections. Finish the unfinished point first."
+                )
+        # Retrieve a small external excerpt only for objective factual questions.
+        # The helper excludes personal-memory, current-events, creative, and math queries.
+        # Retrieval failure is non-fatal and never prevents a normal Ollama answer.
+        evidence_started = time.perf_counter()
+        evidence_question = _evidence_question_for_turn(user_text, history[:-1])
+        evidence = await retrieve_multi_source_evidence(evidence_question)
+        log.debug('Evidence retrieval stage took %.3fs', time.perf_counter() - evidence_started)
+        evidence_prompt = format_multi_source_evidence_for_prompt(evidence, question=user_text)
+        if evidence_prompt:
+            system_prompt += "\n\n" + evidence_prompt
+        elif is_time_sensitive_question(user_text):
+            # Without a live source, current facts must be explicitly unverified.
+            system_prompt += "\n\n" + format_time_sensitive_unavailable_prompt()
+        if arithmetic_result is not None:
+            system_prompt += (
+                "\n\nVERIFIED CALCULATION: A deterministic arithmetic evaluator calculated "
+                f"the expression at the end of the user's message as {arithmetic_result}. "
+                "Include this exact result, and also answer every other part of the user's message. "
+                "Do not recalculate it or ignore the non-math content."
             )
-            response.raise_for_status()
-            payload = response.json()
-        answer = payload.get("message", {}).get("content", "").strip()
+        is_continuation = bool(re.fullmatch(
+            r"(?:continue|go on|finish(?: the answer)?|keep going)",
+            user_text.strip(), flags=re.I,
+        ))
+        output_token_budget = 256 if (_wants_long_answer(user_text) or is_continuation) else 128
+        generation_started = time.perf_counter()
+        provider_name = session.get("provider", "ollama")
+        if provider_name == "gemini":
+            provider = GeminiProvider(GEMINI_API_KEY, base_url=GEMINI_BASE_URL, timeout=GEMINI_TIMEOUT)
+            payload = await provider.chat(
+                model=session["model"],
+                messages=[{"role": "system", "content": system_prompt}] + history,
+                max_tokens=max(512, output_token_budget),
+            )
+            answer = str(payload.get("choices", [{}])[0].get("message", {}).get("content", "") or "").strip()
+            generation_wall_seconds = time.perf_counter() - generation_started
+            eval_count = eval_duration = prompt_eval_count = prompt_eval_duration = load_duration = 0
+            tokens_per_second = 0.0
+            done_reason = str(payload.get("choices", [{}])[0].get("finish_reason") or "").casefold()
+            hit_output_limit = done_reason in {"length", "max_tokens"}
+        else:
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(OLLAMA_TIMEOUT, connect=5.0)
+            ) as client:
+                response = await client.post(
+                    f"{OLLAMA_BASE_URL}/api/chat",
+                    json={
+                        "model": session["model"],
+                        "messages": [{"role": "system", "content": system_prompt}] + history,
+                        "stream": False, "keep_alive": "10m", "think": False,
+                        "options": {
+                            "num_ctx": 2048, "num_predict": output_token_budget,
+                            "temperature": 0.58, "top_p": 0.85, "top_k": 30,
+                            "repeat_penalty": 1.15, "presence_penalty": 0.25,
+                        },
+                    },
+                )
+                response.raise_for_status()
+                payload = response.json()
+            generation_wall_seconds = time.perf_counter() - generation_started
+            eval_count = payload.get("eval_count", 0) or 0
+            eval_duration = payload.get("eval_duration", 0) or 0
+            prompt_eval_count = payload.get("prompt_eval_count", 0) or 0
+            prompt_eval_duration = payload.get("prompt_eval_duration", 0) or 0
+            load_duration = payload.get("load_duration", 0) or 0
+            tokens_per_second = eval_count * 1_000_000_000 / eval_duration if eval_duration > 0 else 0.0
+            answer = payload.get("message", {}).get("content", "").strip()
+            done_reason = str(payload.get("done_reason") or "").casefold()
+            hit_output_limit = done_reason in {"length", "max_tokens"} or (eval_count >= output_token_budget and eval_count > 0)
+        log.info(
+            "AI performance provider=%s model=%s wall=%.2fs load=%.2fs "
+            "prompt_eval=%.2fs/%s tokens generation=%.2fs/%s tokens (%.2f tok/s)",
+            provider_name, session["model"], generation_wall_seconds,
+            load_duration / 1_000_000_000, prompt_eval_duration / 1_000_000_000,
+            prompt_eval_count, eval_duration / 1_000_000_000, eval_count, tokens_per_second,
+        )
         if not answer:
-            raise RuntimeError("Ollama returned no response text.")
+            raise RuntimeError("Selected AI provider returned no response text.")
+        if hit_output_limit:
+            log.warning(
+                "AI output may be truncated provider=%s model=%s done_reason=%s budget=%s",
+                provider_name, session["model"], done_reason or "not-reported", output_token_budget,
+            )
         # Small models sometimes echo a sentence or paragraph inside one answer.
         answer = _deduplicate_answer_text(answer)
+        if hit_output_limit:
+            answer += (
+                "\n\n⚠️ I may have reached my response limit before finishing. "
+                "Send “continue” and I’ll pick up from here."
+            )
+        if is_continuation:
+            answer = re.sub(
+                r"^\s*(?:continuing\.\.\.?|sure[,! ]*)\s*",
+                "", answer, flags=re.I,
+            )
+        if evidence_prompt:
+            support = assess_claim_level_support(user_text, answer, evidence)
+            if support["status"] == "candidate_supported":
+                answer += format_multi_source_attribution(evidence)
+            else:
+                # This is only a lexical overlap check, not proof of correctness.
+                # Be transparent when the generated answer doesn't visibly match
+                # the retrieved extract instead of presenting the source as support.
+                answer += format_support_warning(support)
+                answer += format_multi_source_attribution(evidence)
         if CHAT_SESSIONS.get(key) is not session:
             return
 
@@ -1390,7 +1990,7 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         raise
     except (httpx.HTTPError, RuntimeError, ValueError) as exc:
         if CHAT_SESSIONS.get(key) is session:
-            await message.reply_text(f"⚠️ Ollama request failed: {str(exc)[:700]}")
+            await message.reply_text(f"⚠️ AI provider request failed: {str(exc)[:700]}")
     finally:
         if thinking_message is not None:
             try:
@@ -2360,7 +2960,7 @@ COMMAND_DESCRIPTIONS = [
     BotCommand("docker", "List and manage approved containers and projects"),
     BotCommand("links", "Show dashboards and PIN-protected credentials"),
     BotCommand("power", "Open confirmed lock/suspend/reboot/shutdown controls"),
-    BotCommand("chat", "Start a private chat with a local Ollama model"),
+    BotCommand("chat", "Choose a local Ollama or Gemini model"),
     BotCommand("bye", "End the active Ollama chat"),
     BotCommand("memory", "Show persistent Ollama memory"),
     BotCommand("profile", "Set persistent instructions and preferences for Ollama"),
@@ -2387,11 +2987,11 @@ def main():
         )
 
     app = Application.builder().token(TOKEN).post_init(register_command_descriptions).build()
-    # During an Ollama session, these first-in-group handlers absorb messages and
+    # During an AI chat session, these first-in-group handlers absorb messages and
     # callbacks before normal bot commands/menus can run. block=False lets the bot
     # observe and discard messages sent while a model response is in progress.
     app.add_handler(MessageHandler(
-        ActiveOllamaChatFilter(), active_chat_message, block=False
+        ActiveAIChatFilter(), active_chat_message, block=False
     ))
     app.add_handler(
         CallbackQueryHandler(active_chat_callback),
@@ -2418,6 +3018,8 @@ def main():
     app.add_handler(CommandHandler("profile", ollama_profile_command))
     app.add_handler(CommandHandler("remember", ollama_remember_command))
     app.add_handler(CommandHandler("forget", ollama_forget_command))
+    app.add_handler(CallbackQueryHandler(chat_provider_callback, pattern=r"^chat:(?:gemini|local)$"))
+    app.add_handler(CallbackQueryHandler(gemini_model_selected, pattern=r"^gemini:model:"))
     app.add_handler(CallbackQueryHandler(ollama_model_selected, pattern=r"^ollama:model:"))
     app.add_handler(CommandHandler("status", status))
     app.add_handler(CommandHandler("cpu", cpu))

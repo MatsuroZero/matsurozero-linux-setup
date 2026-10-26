@@ -13,8 +13,8 @@ const command = {
   description: "Open the private Nexus Control Activity",
   type: 4,
   handler: 2,
-  integration_types: [1],
-  contexts: [2],
+  integration_types: [0, 1],
+  contexts: [0, 1, 2],
 };
 
 const response = await fetch(`https://discord.com/api/v10/applications/${applicationId}/commands`, {

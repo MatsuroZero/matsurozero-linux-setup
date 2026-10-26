@@ -26,3 +26,35 @@ __pycache__/
 *.key
 id_rsa
 id_ed25519
+
+# Local credentials (templates are allowed)
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+
+# Local dependencies and runtime files
+node_modules/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.log
+
+# Local backups and temporary snapshots
+**/*.bak
+**/*.bak.*
+**/*.backup*
+**/*-backup
+**/*-backup.*
+**/*.before-*
+**/*.debug-backup
+**/*.origin-backup
+**/*.old
+**/*.orig
+**/*.bak-*
+**/*.bak-*
+**/*.backup-*
+**/*.before-*
