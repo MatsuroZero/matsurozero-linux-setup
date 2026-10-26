@@ -1,5 +1,5 @@
 import os from "node:os";
-import { statfs } from "node:fs/promises";
+import { statfs, readFile, readdir } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
@@ -70,18 +70,79 @@ async function getTopProcesses() {
     return match ? { pid: Number(match[1]), name: match[2], cpuPercent: Number(match[3]), memoryPercent: Number(match[4]) } : null;
   }).filter(Boolean);
 }
+async function getTemperatureSnapshot() {
+  try {
+    const entries = await readdir("/sys/class/thermal");
+    const zones = entries.filter(name => /^thermal_zone\\d+$/.test(name)).slice(0, 32);
+    const sensors = (await Promise.all(zones.map(async zone => {
+      try {
+        const [type, raw] = await Promise.all([
+          readFile(`/sys/class/thermal/${zone}/type`, "utf8").catch(() => zone),
+          readFile(`/sys/class/thermal/${zone}/temp`, "utf8"),
+        ]);
+        const value = Number(raw.trim());
+        if (!Number.isFinite(value)) return null;
+        const celsius = Math.round((Math.abs(value) > 1000 ? value / 1000 : value) * 10) / 10;
+        return { id: zone, name: type.trim().slice(0, 80) || zone, celsius };
+      } catch { return null; }
+    }))).filter(Boolean);
+    return { available: sensors.length > 0, sensors, maxCelsius: sensors.length ? Math.max(...sensors.map(sensor => sensor.celsius)) : null };
+  } catch {
+    return { available: false, sensors: [], maxCelsius: null };
+  }
+}
+async function readNetworkCounters() {
+  const raw = await readFile("/proc/net/dev", "utf8");
+  const counters = new Map();
+  for (const line of raw.split("\\n").slice(2)) {
+    const split = line.split(":");
+    if (split.length !== 2) continue;
+    const name = split[0].trim();
+    const values = split[1].trim().split(/\\s+/).map(Number);
+    if (name && values.length >= 9 && values.every(Number.isFinite)) {
+      counters.set(name, { rxBytes: values[0], txBytes: values[8] });
+    }
+  }
+  return counters;
+}
+export async function getNetworkSnapshot(sampleMs = 350) {
+  try {
+    const before = await readNetworkCounters();
+    const started = Date.now();
+    await new Promise(resolve => setTimeout(resolve, Math.max(100, Math.min(1000, sampleMs))));
+    const after = await readNetworkCounters();
+    const elapsedSeconds = Math.max(0.001, (Date.now() - started) / 1000);
+    const interfaces = [...after.entries()].filter(([name]) => name !== "lo").map(([name, counters]) => {
+      const previous = before.get(name) || { rxBytes: counters.rxBytes, txBytes: counters.txBytes };
+      const rxBytesPerSecond = Math.max(0, Math.round((counters.rxBytes - previous.rxBytes) / elapsedSeconds));
+      const txBytesPerSecond = Math.max(0, Math.round((counters.txBytes - previous.txBytes) / elapsedSeconds));
+      return {
+        name,
+        rxBytes: counters.rxBytes,
+        txBytes: counters.txBytes,
+        rxBytesPerSecond,
+        txBytesPerSecond,
+        rxRate: `${formatBytes(rxBytesPerSecond).label}/s`,
+        txRate: `${formatBytes(txBytesPerSecond).label}/s`,
+      };
+    });
+    return { available: true, sampledMs: Math.round(elapsedSeconds * 1000), interfaces };
+  } catch {
+    return { available: false, sampledMs: 0, interfaces: [] };
+  }
+}
 export async function getSystemSnapshot() {
   const totalMemory = os.totalmem();
   const freeMemory = os.freemem();
   const networkInterfaces = os.networkInterfaces();
-  const [disk, processes, usagePercent] = await Promise.all([getDisk(), getTopProcesses(), cpuUsagePercent()]);
+  const [disk, processes, usagePercent, temperatures] = await Promise.all([getDisk(), getTopProcesses(), cpuUsagePercent(), getTemperatureSnapshot()]);
   return {
     hostname: os.hostname(), platform: os.platform(), architecture: os.arch(),
     cpu: { cores: os.cpus().length, usagePercent, loadAverage: os.loadavg().map(value => Number(value.toFixed(2))) },
     memory: { total: formatBytes(totalMemory), free: formatBytes(freeMemory), used: formatBytes(totalMemory - freeMemory), usedPercent: Math.round((totalMemory - freeMemory) / totalMemory * 100) },
     disk, uptimeSeconds: Math.floor(os.uptime()), uptime: formatUptime(os.uptime()),
     networkInterfaces: Object.entries(networkInterfaces).filter(([, entries]) => entries?.some(entry => !entry.internal)).map(([name]) => name),
-    topProcesses: processes, sampledAt: new Date().toISOString(),
+    temperatures, topProcesses: processes, sampledAt: new Date().toISOString(),
   };
 }
 const SERVICE_BY_ID = new Map(SERVICES.map(service => [service.id, service]));
