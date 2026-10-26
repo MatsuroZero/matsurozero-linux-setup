@@ -10,6 +10,8 @@ A private Discord Activity web app scaffold for the Linux control system. The da
 - Server-side allowlist validation against `DISCORD_ALLOWED_USER_ID`; privileged API routes re-check the session identity.
 - Unit tests for allowlist behavior and HTTP boundary behavior.
 - Live read-only host metrics: CPU usage sampled over a short interval, memory, root filesystem usage, uptime, network interfaces, and top processes.
+- Read-only service inventory for the known Nexus service list and read-only Docker running-container inventory.
+- Functional navigation between Overview, System, Services, Containers, Network, and AI Assistant panels. AI and system-changing actions remain clearly disabled until integrated.
 - No arbitrary shell execution endpoint. Service, Docker, power, and AI actions remain disabled until the shared control layer is implemented.
 
 ## Requirements
