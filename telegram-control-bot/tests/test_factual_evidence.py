@@ -1176,6 +1176,49 @@ class NumericEvidenceRelevanceTests(unittest.TestCase):
         self.assertEqual(result["title"], "Jupiter")
 
 
+class CrossSourceEvidenceLaunderingTests(unittest.TestCase):
+    def test_separate_sources_cannot_combine_to_support_one_compound_claim(self):
+        evidence = {
+            "title": "Australian capitals",
+            "excerpt": "Canberra is the capital city of Australia.",
+            "url": "https://en.wikipedia.org/?curid=101",
+            "additional_sources": [{
+                "title": "Canberra demographics",
+                "excerpt": "Canberra has 500000 residents.",
+                "url": "https://stackoverflow.com/a/101",
+                "source": "Stack Overflow answer",
+            }],
+        }
+        result = factual_evidence.assess_answer_support(
+            "What is Canberra?",
+            "Canberra is the capital city of Australia and has 500000 residents.",
+            evidence,
+        )
+        self.assertEqual(result["status"], "insufficient_overlap")
+        self.assertIn("500000", result.get("unsupported_numbers", []))
+
+    def test_one_source_can_support_a_complete_claim(self):
+        evidence = {
+            "title": "Canberra",
+            "excerpt": (
+                "Canberra is the capital city of Australia and has 500000 residents."
+            ),
+            "url": "https://en.wikipedia.org/?curid=102",
+            "additional_sources": [{
+                "title": "Other fact",
+                "excerpt": "A separate unrelated statement about a city.",
+                "url": "https://stackoverflow.com/a/102",
+                "source": "Stack Overflow answer",
+            }],
+        }
+        result = factual_evidence.assess_answer_support(
+            "What is Canberra?",
+            "Canberra is the capital city of Australia and has 500000 residents.",
+            evidence,
+        )
+        self.assertEqual(result["status"], "candidate_supported")
+
+
 class ClaimLevelSupportTests(unittest.TestCase):
     def test_supported_sentence_does_not_hide_unsupported_second_sentence(self):
         evidence = {
