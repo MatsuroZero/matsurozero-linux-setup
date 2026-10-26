@@ -14,7 +14,7 @@ test("health endpoint is public and reports bridge state honestly", async () => 
   await withServer(async base => {
     const response = await fetch(base + "/api/health");
     assert.equal(response.status, 200);
-    assert.deepEqual(await response.json(), { ok: true, service: "discord-control-activity", bridge: "not-configured" });
+    assert.deepEqual(await response.json(), { ok: true, service: "discord-control-activity", hostMetrics: "available", controlActions: "disabled" });
   });
 });
 
