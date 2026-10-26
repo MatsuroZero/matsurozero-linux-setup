@@ -9,7 +9,7 @@ A private Discord Activity web app for monitoring a Linux host and safely managi
 - A server-side command registration script configures the Activity Entry Point for user-installed private-channel contexts. It uses the bot token from the environment only and never sends it to the browser.
 - Node.js HTTP server, health/config endpoints, Discord OAuth authorization-code exchange, Embedded App SDK authentication, and secure session cookie.
 - Server-side allowlist validation against `DISCORD_ALLOWED_USER_ID`; every private API route re-checks the authenticated session identity.
-- Read-only system metrics: sampled CPU utilization, memory, root filesystem usage, uptime, network interface names, and top processes.
+- Read-only system metrics: sampled CPU utilization, memory, root filesystem usage, uptime, thermal-zone readings when exposed by Linux, network interface names, sampled per-interface RX/TX throughput, and top processes.
 - Read-only inventory of known Nexus systemd services and Docker containers.
 - Confirmed start/stop/restart actions for a fixed allowlist of services and containers, with server-side origin checks and per-user action cooldown. No arbitrary shell endpoint exists.
 - Optional AI chat using Ollama on the Activity host or Gemini when `GEMINI_API_KEY` is configured. Model choices are constrained to the available Ollama tags and a fixed Gemini model allowlist; conversation history is session-only.
