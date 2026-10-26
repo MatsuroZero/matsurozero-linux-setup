@@ -946,6 +946,34 @@ async def _extract_after_previous(previous_task, key, session, user_text):
     await _extract_temporary_facts(key, session, user_text)
 
 
+def _bounded_chat_history(history, max_prior_messages=4, max_prior_chars=2400, max_message_chars=900):
+    """Keep the newest turn intact while bounding old context for CPU-friendly prefill.
+
+    Long current user messages remain intact. Older turns are useful for continuity,
+    but retaining huge pasted code or logs across turns needlessly slows every reply.
+    """
+    messages = [item for item in history if isinstance(item, dict)]
+    if not messages:
+        return []
+    latest = dict(messages[-1])
+    prior = messages[:-1][-max_prior_messages:]
+    bounded_prior = []
+    remaining = max_prior_chars
+    for item in reversed(prior):
+        content = str(item.get("content") or "")
+        if remaining <= 0:
+            break
+        limit = min(max_message_chars, remaining)
+        if len(content) > limit:
+            content = content[-limit:]
+        if not content.strip():
+            continue
+        bounded_prior.append({"role": item.get("role", "user"), "content": content})
+        remaining -= len(content)
+    bounded_prior.reverse()
+    return bounded_prior + [latest]
+
+
 def _deduplicate_answer_text(text):
     """Remove exact repeated long lines while preserving bullets and paragraph layout."""
     text = str(text or "").strip()
@@ -1368,7 +1396,9 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
     history.append({"role": "user", "content": user_text})
     # Keep recent turns only. The profile/memory supplies durable context, while
     # a compact transcript reduces prompt processing on this CPU-limited host.
-    history = history[-8:]
+    # Keep the latest user message intact, but bound old turns. Carrying large
+    # pasted logs/code forward into every prompt makes CPU-only generation slower.
+    history = _bounded_chat_history(history)
 
     thinking_message = None
     try:
