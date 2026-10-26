@@ -28,7 +28,7 @@ export function validateName(name) {
 }
 export function validArgv(entry) {
   return entry && Array.isArray(entry.argv) && entry.argv.length > 0 &&
-    entry.argv.length <= 64 && entry.argv.every(arg => typeof arg === "string" && arg.length <= 2048) &&
+    entry.argv.length <= 64 && entry.argv.every(arg => typeof arg === "string" && arg.length <= 2048 && !arg.includes("\\0")) &&
     typeof entry.argv[0] === "string" && entry.argv[0].trim().length > 0;
 }
 function resolveCommand(registry, name) {
