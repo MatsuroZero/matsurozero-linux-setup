@@ -28,6 +28,23 @@ class ArithmeticTests(unittest.TestCase):
             "2",
         )
 
+    def test_math_expression_before_chatty_suffix(self):
+        question = (
+            "My dear, could you help with this mathematical question? "
+            "whats 347 * 28, well technically not hard but im lazy to solve it"
+        )
+        self.assertEqual(bot._answer_arithmetic_question(question), "9716")
+        self.assertTrue(bot._is_math_primary_request(question))
+
+    def test_math_primary_request_does_not_swallow_second_task(self):
+        self.assertFalse(
+            bot._is_math_primary_request("What's 347 * 28, and also tell me Japan's capital?")
+        )
+
+    def test_explicit_research_requests_get_larger_budget(self):
+        self.assertTrue(bot._wants_long_answer("Explain this step by step for my research and cite sources"))
+        self.assertFalse(bot._wants_long_answer("Hey, how are you?"))
+
     def test_exact_fraction(self):
         self.assertEqual(bot._answer_arithmetic_question("1 / 3"), "1/3")
 
@@ -67,6 +84,16 @@ class TemporaryMemoryTests(unittest.TestCase):
     def test_rejects_unknown_category(self):
         self.assertFalse(bot._add_temporary_fact(self.session, "secrets", "something"))
         self.assertEqual(self.session["temporary_facts"], [])
+
+    def test_preference_extraction_stops_before_followup_question(self):
+        self.assertTrue(
+            bot._extract_explicit_temporary_fact(
+                self.session, "I love JoJo's Bizarre Adventure, do you know it?"
+            )
+        )
+        fact = self.session["temporary_facts"][0]["fact"]
+        self.assertIn("JoJo's Bizarre Adventure", fact)
+        self.assertNotIn("do you know it", fact.casefold())
 
     def test_does_not_turn_question_into_preference(self):
         self.assertFalse(
