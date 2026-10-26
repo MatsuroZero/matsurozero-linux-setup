@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
-import { randomBytes } from "node:crypto";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { assertAuthorizedDiscordUser } from "./authz.js";
@@ -12,6 +12,13 @@ const ROOT = fileURLToPath(new URL("../public/", import.meta.url));
 const PORT = Number(process.env.PORT || 8787);
 const sessions = new Map();
 const lastActionAt = new Map();
+const credentialAttempts = new Map();
+const DASHBOARDS = [
+  { id: "system-dashboard", name: "System dashboard", url: process.env.SYSTEM_DASHBOARD_URL || "http://marwan-pc.local:7171/login", usernameEnv: "SYSTEM_DASHBOARD_USERNAME", passwordEnv: "SYSTEM_DASHBOARD_PASSWORD" },
+  { id: "odysseus", name: "Odysseus", url: process.env.ODYSSEUS_URL || "http://marwan-pc.local:7011/", usernameEnv: "ODYSSEUS_USERNAME", passwordEnv: "ODYSSEUS_PASSWORD" },
+  { id: "jellyfin", name: "Jellyfin", url: process.env.JELLYFIN_URL || "http://marwan-pc.local:8096/", usernameEnv: "JELLYFIN_USERNAME", passwordEnv: "JELLYFIN_PASSWORD" },
+  { id: "uptime-kuma", name: "Uptime Kuma", url: process.env.UPTIME_KUMA_URL || "http://marwan-pc.local:3001/", usernameEnv: "UPTIME_KUMA_USERNAME", passwordEnv: "UPTIME_KUMA_PASSWORD" },
+];
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 const APP_ID = process.env.DISCORD_APPLICATION_ID || "";
 
@@ -41,6 +48,34 @@ function hasSameOrigin(req) {
   const origin = req.headers.origin;
   if (typeof origin !== "string" || typeof req.headers.host !== "string") return false;
   try { return new URL(origin).host === req.headers.host; } catch { return false; }
+}
+function safeHttpUrl(value) {
+  try {
+    const url = new URL(value);
+    return ["http:", "https:"].includes(url.protocol) ? url.toString() : "";
+  } catch { return ""; }
+}
+function checkCredentialPin(userId, supplied) {
+  const now = Date.now();
+  const state = credentialAttempts.get(userId) || { count: 0, windowStart: now, lockedUntil: 0 };
+  if (state.lockedUntil > now) return { ok: false, locked: true };
+  if (now - state.windowStart > 5 * 60 * 1000) {
+    state.count = 0;
+    state.windowStart = now;
+    state.lockedUntil = 0;
+  }
+  const expected = process.env.LINKS_PIN || "";
+  if (!expected) return { ok: false, notConfigured: true };
+  const candidate = typeof supplied === "string" ? supplied : "";
+  const matches = candidate.length === expected.length && timingSafeEqual(Buffer.from(candidate), Buffer.from(expected));
+  if (matches) {
+    credentialAttempts.delete(userId);
+    return { ok: true };
+  }
+  state.count += 1;
+  if (state.count >= 3) state.lockedUntil = now + 5 * 60 * 1000;
+  credentialAttempts.set(userId, state);
+  return { ok: false, locked: state.lockedUntil > now };
 }
 function enforceActionCooldown(userId) {
   const now = Date.now();
@@ -91,7 +126,7 @@ export function createAppServer() {
       if (req.method === "GET" && url.pathname === "/api/health") {
         return send(res, 200, { ok: true, service: "discord-control-activity", hostMetrics: "available", controlActions: "allowlisted" });
       }
-      if (req.method === "POST" && ["/api/session", "/api/logout", "/api/services/action", "/api/containers/action", "/api/projects/action", "/api/projects/logs", "/api/containers/logs", "/api/power/action", "/api/ai/chat", "/api/ai/memory/profile", "/api/ai/memory/remember", "/api/ai/memory/forget"].includes(url.pathname) && !hasSameOrigin(req)) {
+      if (req.method === "POST" && ["/api/session", "/api/logout", "/api/services/action", "/api/containers/action", "/api/projects/action", "/api/projects/logs", "/api/containers/logs", "/api/power/action", "/api/links/credentials", "/api/ai/chat", "/api/ai/memory/profile", "/api/ai/memory/remember", "/api/ai/memory/forget"].includes(url.pathname) && !hasSameOrigin(req)) {
         return send(res, 403, { error: "Cross-origin request rejected" });
       }
       if (req.method === "POST" && url.pathname === "/api/session") {
@@ -122,6 +157,22 @@ export function createAppServer() {
         if (!session) return send(res, 401, { error: "Authenticate through Discord first" });
         try { assertAuthorizedDiscordUser(session.userId, process.env.DISCORD_ALLOWED_USER_ID); }
         catch { return send(res, 403, { error: "Not authorized" }); }
+        if (req.method === "GET" && url.pathname === "/api/links") {
+          return send(res, 200, { dashboards: DASHBOARDS.map(({ id, name, url }) => ({ id, name, url: safeHttpUrl(url) })) });
+        }
+        if (req.method === "POST" && url.pathname === "/api/links/credentials") {
+          const { pin } = await readJson(req, 4096);
+          const verification = checkCredentialPin(session.userId, pin);
+          if (verification.notConfigured) return send(res, 503, { error: "LINKS_PIN is not configured on the server." });
+          if (!verification.ok) return send(res, 403, { error: verification.locked ? "Too many PIN attempts. Try again in five minutes." : "Incorrect PIN." });
+          const credentials = DASHBOARDS.map(item => ({
+            name: item.name,
+            username: process.env[item.usernameEnv] || "",
+            password: process.env[item.passwordEnv] || "",
+          })).filter(item => item.username && item.password);
+          if (!credentials.length) return send(res, 503, { error: "No dashboard credentials are configured on the server." });
+          return send(res, 200, { credentials });
+        }
         if (req.method === "GET" && url.pathname === "/api/ai/memory") {
           return send(res, 200, await getMemory());
         }
