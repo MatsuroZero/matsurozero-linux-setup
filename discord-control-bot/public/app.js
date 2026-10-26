@@ -46,7 +46,7 @@ function renderServices(services) {
 }
 function renderContainers(data) {
   $("#containers").innerHTML = data.available ? (data.containers.length ? data.containers.map(item => {
-    const running = /^Up\\b/i.test(item.status);
+    const running = /^Up\b/i.test(item.status);
     const actions = running ? ["restart", "stop"] : ["start"];
     return `<div class="inventory-row"><div><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.image)} · ${escapeHtml(item.id)}</small><small>${escapeHtml(item.status)}</small></div><div class="inventory-actions">${actions.map(action => `<button class="action-button" data-container-id="${escapeHtml(item.id)}" data-action="${action}">${action}</button>`).join("")}</div></div>`;
   }).join("") : '<p class="muted">No containers detected.</p>') : `<p class="muted">Docker inventory unavailable: ${escapeHtml(data.detail)}</p>`;
