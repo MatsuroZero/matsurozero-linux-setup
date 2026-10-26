@@ -193,6 +193,14 @@ class MultiSourceRelevanceTests(unittest.IsolatedAsyncioTestCase):
             )
         self.assertIsNone(result)
 
+    async def test_numeric_question_ignores_number_in_unrelated_sentence(self):
+        excerpt = "Planet X is a distant planet. Its constellation contains 12 stars."
+        self.assertFalse(
+            factual_evidence._evidence_has_required_numeric_value(
+                "How many moons does Planet X have?", excerpt
+            )
+        )
+
     async def test_numeric_question_accepts_passage_with_answer_value(self):
         wikipedia = {
             "title": "Planet X",
