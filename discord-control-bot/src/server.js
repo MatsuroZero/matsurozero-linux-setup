@@ -66,7 +66,7 @@ function checkCredentialPin(userId, supplied) {
     state.lockedUntil = 0;
   }
   const expected = process.env.LINKS_PIN || "";
-  if (!expected) return { ok: false, notConfigured: true };
+  if (expected.length < 6) return { ok: false, notConfigured: true };
   const candidate = typeof supplied === "string" ? supplied : "";
   const matches = candidate.length === expected.length && timingSafeEqual(Buffer.from(candidate), Buffer.from(expected));
   if (matches) {
