@@ -26,6 +26,12 @@ A private Discord Activity web app for monitoring a Linux host and safely managi
 
 ## Run locally
 
+### Optional systemd user service template
+
+The repository includes `deploy/discord-control-activity.service.example`. Edit its `WorkingDirectory` to the actual clone path, create `~/.config/discord-control-activity/env` with mode `600`, then install the unit under `~/.config/systemd/user/`. The template is a starting point and requires a deployment review, especially if the host needs system-level service control or Docker access.
+
+
+
 1. Copy `.env.example` to an untracked `.env` and fill in values.
 2. Set `DISCORD_APPLICATION_ID`, `DISCORD_CLIENT_SECRET`, and `DISCORD_ALLOWED_USER_ID`.
 3. Set `DISCORD_REDIRECT_URI=https://127.0.0.1` to match the placeholder redirect URI registered in Discord.
