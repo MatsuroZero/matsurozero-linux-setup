@@ -1122,6 +1122,52 @@ class EvidenceCacheTests(unittest.IsolatedAsyncioTestCase):
             factual_evidence.EVIDENCE_CACHE_TTL_SECONDS = 180.0
 
 
+class NumericEvidenceRelevanceTests(unittest.TestCase):
+    async def test_numeric_fact_in_unrelated_sentence_does_not_pass_gate(self):
+        wikipedia = {
+            "title": "Jupiter",
+            "excerpt": (
+                "Jupiter is a gas giant planet. It has a diameter of 139820 km. "
+                "Its moon system is complex."
+            ),
+            "url": "https://en.wikipedia.org/?curid=777",
+            "source": "Wikipedia article extract",
+        }
+        with patch.object(
+            factual_evidence, "retrieve_wikipedia_evidence",
+            new=AsyncMock(return_value=wikipedia)
+        ), patch.object(
+            factual_evidence, "retrieve_stackexchange_evidence",
+            new=AsyncMock(return_value=[])
+        ):
+            result = await factual_evidence._retrieve_multi_source_evidence_uncached(
+                "How many moons does Jupiter have?"
+            )
+        self.assertIsNone(result)
+
+    async def test_numeric_fact_in_relevant_sentence_passes_gate(self):
+        wikipedia = {
+            "title": "Jupiter",
+            "excerpt": (
+                "Jupiter is a gas giant planet. Jupiter has 95 confirmed moons."
+            ),
+            "url": "https://en.wikipedia.org/?curid=778",
+            "source": "Wikipedia article extract",
+        }
+        with patch.object(
+            factual_evidence, "retrieve_wikipedia_evidence",
+            new=AsyncMock(return_value=wikipedia)
+        ), patch.object(
+            factual_evidence, "retrieve_stackexchange_evidence",
+            new=AsyncMock(return_value=[])
+        ):
+            result = await factual_evidence._retrieve_multi_source_evidence_uncached(
+                "How many moons does Jupiter have?"
+            )
+        self.assertIsNotNone(result)
+        self.assertEqual(result["title"], "Jupiter")
+
+
 class ClaimLevelSupportTests(unittest.TestCase):
     def test_supported_sentence_does_not_hide_unsupported_second_sentence(self):
         evidence = {
