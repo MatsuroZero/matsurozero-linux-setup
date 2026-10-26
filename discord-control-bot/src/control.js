@@ -123,8 +123,11 @@ export async function performContainerAction(containerId, action) {
   const request = validateContainerAction(containerId, action);
   const listed = await runReadOnly("docker", ["ps", "-a", "--format", "{{json .}}"]);
   if (!listed.ok && !listed.stdout) throw Object.assign(new Error("Docker is unavailable or permission was denied"), { status: 503 });
-  const found = listed.stdout.split("\\n").filter(Boolean).map(line => {
-    try { const item = JSON.parse(line); return { id: item.ID, name: item.Names }; } catch { return null; }
+  const found = listed.stdout.split("\n").filter(Boolean).map(line => {
+    try {
+      const item = JSON.parse(line);
+      return { id: item.ID, name: item.Names };
+    } catch { return null; }
   }).filter(Boolean).find(item => item.id === request.containerId || item.name === request.containerId);
   if (!found) throw Object.assign(new Error("Container is not in the current Docker inventory"), { status: 404 });
   try {
@@ -133,7 +136,7 @@ export async function performContainerAction(containerId, action) {
     throw Object.assign(new Error("Docker action failed. Check container state and Docker permissions."), { status: 503 });
   }
   console.info(JSON.stringify({ event: "container_action", containerId: found.id, action, at: new Date().toISOString() }));
-  return { ok: true, containerId: found[0], action };
+  return { ok: true, containerId: found.id, action };
 }
 
 export async function getServiceSnapshot() {
@@ -145,11 +148,13 @@ export async function getServiceSnapshot() {
   }));
 }
 export async function getContainerSnapshot() {
-  const result = await runReadOnly("docker", ["ps", "--format", "{{.ID}}\t{{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}"]);
+  const result = await runReadOnly("docker", ["ps", "-a", "--format", "{{json .}}"]);
   if (!result.ok && !result.stdout) return { available: false, detail: result.error || "unavailable", containers: [] };
   const containers = result.stdout ? result.stdout.split("\n").filter(Boolean).slice(0, 100).map(line => {
-    const [id, name, image, status, ports] = line.split("\t");
-    return { id, name, image, status, ports: ports || "" };
-  }) : [];
+    try {
+      const item = JSON.parse(line);
+      return { id: item.ID || "", name: item.Names || "", image: item.Image || "", status: item.Status || "", ports: item.Ports || "" };
+    } catch { return null; }
+  }).filter(Boolean) : [];
   return { available: true, detail: containers.length ? `${containers.length} container(s)` : "Docker is available; no containers found", containers };
 }
