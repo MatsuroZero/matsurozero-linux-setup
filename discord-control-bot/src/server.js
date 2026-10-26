@@ -75,6 +75,9 @@ export function createAppServer() {
   return createServer(async (req, res) => {
     const url = new URL(req.url || "/", "http://localhost");
     try {
+      if (req.method === "GET" && url.pathname === "/api/config") {
+        return send(res, 200, { applicationId: APP_ID });
+      }
       if (req.method === "GET" && url.pathname === "/api/health") {
         return send(res, 200, { ok: true, service: "discord-control-activity", bridge: "not-configured" });
       }
@@ -87,7 +90,7 @@ export function createAppServer() {
         assertAuthorizedDiscordUser(user.id, process.env.DISCORD_ALLOWED_USER_ID);
         const sid = randomBytes(32).toString("base64url");
         sessions.set(sid, { userId: user.id, username: user.global_name || user.username, expiresAt: Date.now() + SESSION_TTL_MS });
-        return send(res, 200, { ok: true, user: { id: user.id, name: user.global_name || user.username } }, {
+        return send(res, 200, { ok: true, access_token: tokenData.access_token, user: { id: user.id, name: user.global_name || user.username } }, {
           "set-cookie": `nexus_sid=${sid}; HttpOnly; Secure; SameSite=None; Path=/; Max-Age=28800`,
         });
       }
