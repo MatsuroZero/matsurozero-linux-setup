@@ -141,6 +141,41 @@ class MultiSourceRelevanceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["title"], "Installing Python on Linux")
         self.assertEqual(result["additional_sources"], [])
 
+    async def test_retrieval_rejects_candidate_matching_only_one_incidental_term(self):
+        wikipedia = {
+            "title": "Linux",
+            "excerpt": "Linux is an operating system used on many computers.",
+            "url": "https://en.wikipedia.org/?curid=222",
+            "source": "Wikipedia article extract",
+        }
+        with patch.object(
+            factual_evidence, "retrieve_wikipedia_evidence", new=AsyncMock(return_value=wikipedia)
+        ), patch.object(
+            factual_evidence, "retrieve_stackexchange_evidence", new=AsyncMock(return_value=[])
+        ):
+            result = await factual_evidence._retrieve_multi_source_evidence_uncached(
+                "How do I install Python on Linux?"
+            )
+        self.assertIsNone(result)
+
+    async def test_short_entity_question_can_match_one_content_term(self):
+        wikipedia = {
+            "title": "Canberra",
+            "excerpt": "Canberra is the capital city of Australia.",
+            "url": "https://en.wikipedia.org/?curid=333",
+            "source": "Wikipedia article extract",
+        }
+        with patch.object(
+            factual_evidence, "retrieve_wikipedia_evidence", new=AsyncMock(return_value=wikipedia)
+        ), patch.object(
+            factual_evidence, "retrieve_stackexchange_evidence", new=AsyncMock(return_value=[])
+        ):
+            result = await factual_evidence._retrieve_multi_source_evidence_uncached(
+                "What is Canberra?"
+            )
+        self.assertIsNotNone(result)
+        self.assertEqual(result["title"], "Canberra")
+
     async def test_retrieval_abstains_when_all_sources_are_off_topic(self):
         wikipedia = {
             "title": "World War II",
