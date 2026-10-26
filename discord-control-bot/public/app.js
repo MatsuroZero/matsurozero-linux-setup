@@ -48,21 +48,17 @@ async function start() {
     if (!id) throw new Error("Set DISCORD_APPLICATION_ID on the Activity server.");
     const discordSdk = new DiscordSDK(id);
     await discordSdk.ready();
-    const existing = await api("/api/session").catch(() => ({ authenticated: false }));
-    let user;
-    if (!existing.authenticated) {
-      const { code } = await discordSdk.commands.authorize({
-        client_id: id,
-        response_type: "code",
-        state: "",
-        prompt: "none",
-        scope: ["identify"],
-      });
-      const result = await api("/api/session", { method: "POST", body: JSON.stringify({ code }) });
-      const auth = await discordSdk.commands.authenticate({ access_token: result.access_token });
-      if (!auth) throw new Error("Discord SDK authentication failed.");
-      user = result.user;
-    } else user = existing.user;
+    const { code } = await discordSdk.commands.authorize({
+      client_id: id,
+      response_type: "code",
+      state: "",
+      prompt: "none",
+      scope: ["identify"],
+    });
+    const result = await api("/api/session", { method: "POST", body: JSON.stringify({ code }) });
+    const auth = await discordSdk.commands.authenticate({ access_token: result.access_token });
+    if (!auth) throw new Error("Discord SDK authentication failed.");
+    const user = result.user;
     $("#user-name").textContent = user.name || "Authorized user";
     $("#user-state").textContent = "Allowlist verified";
     const overview = await api("/api/overview");
