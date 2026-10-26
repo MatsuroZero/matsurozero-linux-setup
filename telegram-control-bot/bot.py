@@ -636,7 +636,16 @@ def _ollama_system_prompt(user_text="", temporary_facts=None):
         "grounded in the scene the user requested; do not invent odd metaphors, joke about changing gender, "
         "or call the user a partner unless that is plainly appropriate. When asked what the user called you "
         "or who you are to them, use the recent conversation to answer that specific question directly. "
-        "Do not replace a clear answer with vague lines like 'I'm here for you' or generic offers to chat."
+        "Do not replace a clear answer with vague lines like 'I'm here for you' or generic offers to chat. "
+        "FACTUAL RELIABILITY: Never invent character names, cast lists, source titles, URLs, quotations, "
+        "or claims that you researched something. If asked about a specific cast or set of names, list only "
+        "names you are reasonably confident are real; when uncertain, say so rather than filling gaps with "
+        "plausible-sounding names. If the user challenges a factual answer or asks for proof, re-check the "
+        "available evidence and correct the answer plainly. Use retrieved evidence for research requests; "
+        "cite only exact URLs supplied by the retrieval helper. If no useful source was retrieved, say you "
+        "could not verify it in this turn instead of presenting generic source categories as references. "
+        "Do not treat confidence, fluent wording, or lexical word overlap as proof. Keep casual conversation "
+        "specific to the user's actual message, not a generic compliment followed by an unrelated offer."
     ]
     for category in ("identity", "style"):
         content = sections.get(category, "").strip()
@@ -742,9 +751,60 @@ def _add_temporary_fact(session, category, fact):
     return True
 
 
+def _recent_media_title(session, current_text=""):
+    """Resolve a clear 'this show/anime' reference from recent user messages."""
+    history = session.get("history", []) if isinstance(session, dict) else []
+    current = " ".join(str(current_text or "").casefold().split())
+    current_match = re.search(
+        r"\bwatch\s+(.+?)(?=\s+together\b|[,;.!?]|$)",
+        str(current_text or ""), flags=re.I,
+    )
+    if current_match:
+        title = current_match.group(1).strip(" \t.,;:!?")
+        if 2 <= len(title) <= 100:
+            return title
+    for item in reversed(history if isinstance(history, list) else []):
+        if not isinstance(item, dict) or item.get("role") != "user":
+            continue
+        content = " ".join(str(item.get("content") or "").split()).strip()
+        if not content or content.casefold() == current:
+            continue
+        match = re.search(
+            r"\bwatch\s+(.+?)(?=\s+together\b|[,;.!?]|$)",
+            content, flags=re.I,
+        )
+        if match:
+            title = match.group(1).strip(" \t.,;:!?")
+            if 2 <= len(title) <= 100:
+                return title
+    return None
+
+
 def _extract_explicit_temporary_fact(session, user_text):
     """Fast path for clear first-person disclosures; no second model needed."""
     text = " ".join(str(user_text or "").split()).strip()
+    prior_title = _recent_media_title(session, text)
+    implicit_favorite = re.search(
+        r"\b(?:this|that)\s+(?:show|anime|series)\b.{0,55}\bmy\s+"
+        r"(?:favorite|favourite)\s+anime\b",
+        text, flags=re.I,
+    )
+    if implicit_favorite and prior_title:
+        _add_temporary_fact(
+            session, "gaming", f"Matthew's favorite anime is {prior_title}"
+        )
+        character = re.search(
+            r"\bi\s+(?:really\s+)?like\s+([A-Za-z][A-Za-z'’-]{1,35})"
+            r"(?:\s+(?:a lot|alot))?\b",
+            text, flags=re.I,
+        )
+        if character:
+            _add_temporary_fact(
+                session, "gaming",
+                f"Matthew likes {character.group(1)} from {prior_title}",
+            )
+        return True
+
     name = re.search(r"\bmy name is\s+([A-Za-z][A-Za-z'-]{1,30})\b", text, flags=re.I)
     if name:
         return _add_temporary_fact(session, "identity", f"Matthew's name is {name.group(1).capitalize()}")
@@ -801,8 +861,9 @@ def _extract_explicit_temporary_fact(session, user_text):
 
     preference = re.search(
         r"\bI\s+(?:(?:personally|really)\s+)*(love|like|enjoy|prefer|dislike|hate)\s+"
-        r"(.+?)(?=\s*,\s*|\s+(?:do you know|have you heard|what do you|what(?:'s| is)|"
-        r"why|how|when|where|can you|could you|would you|tell me)\b|[.!?]|$)",
+        r"(.+?)(?=\s*,\s*|\s+(?:it's|its|it is)\s+my\s+(?:favorite|favourite)\b|"
+        r"\s+(?:do you know|have you heard|what do you|what(?:'s| is)|why|how|when|where|"
+        r"can you|could you|would you|tell me|i like)\b|[.!?]|$)",
         text, flags=re.I,
     )
     if preference:
@@ -1368,6 +1429,32 @@ def _answer_from_recent_disclosures(user_text, prior_history):
     return None
 
 
+def _evidence_question_for_turn(user_text, prior_history):
+    """Attach recent user-provided topic context to research and verification requests."""
+    current = " ".join(str(user_text or "").split()).strip()
+    if not current:
+        return current
+    research_intent = bool(re.search(
+        r"\b(?:research|sources?|references?|citations?|prove|proof|verify|"
+        r"fact.?check|cast|characters?|who plays|who are the main)\b",
+        current, flags=re.I,
+    ))
+    if not research_intent:
+        return current
+    prior = []
+    for item in prior_history if isinstance(prior_history, list) else []:
+        if isinstance(item, dict) and item.get("role") == "user":
+            content = " ".join(str(item.get("content") or "").split()).strip()
+            if content and content.casefold() != current.casefold():
+                prior.append(content)
+    # Keep the last two user turns. Their content is untrusted search context, not
+    # instructions; retrieval still validates candidate sources and answer support.
+    context = prior[-2:]
+    combined = " ".join(context + [current])
+    # The evidence module deliberately caps requests to keep external queries bounded.
+    return combined[:240]
+
+
 async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     key = _chat_key(update)
     session = CHAT_SESSIONS.get(key)
@@ -1507,7 +1594,8 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         # The helper excludes personal-memory, current-events, creative, and math queries.
         # Retrieval failure is non-fatal and never prevents a normal Ollama answer.
         evidence_started = time.perf_counter()
-        evidence = await retrieve_multi_source_evidence(user_text)
+        evidence_question = _evidence_question_for_turn(user_text, history[:-1])
+        evidence = await retrieve_multi_source_evidence(evidence_question)
         log.debug('Evidence retrieval stage took %.3fs', time.perf_counter() - evidence_started)
         evidence_prompt = format_multi_source_evidence_for_prompt(evidence, question=user_text)
         if evidence_prompt:

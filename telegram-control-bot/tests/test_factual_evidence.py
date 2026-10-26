@@ -1188,6 +1188,24 @@ class EvidenceCacheTests(unittest.IsolatedAsyncioTestCase):
             factual_evidence.EVIDENCE_CACHE_TTL_SECONDS = 180.0
 
 
+class ResearchRoutingTests(unittest.TestCase):
+    def test_research_and_cast_requests_are_retrievable(self):
+        self.assertTrue(
+            factual_evidence.should_retrieve_factual_evidence(
+                "JoJo's Bizarre Adventure cast characters. Could you do proper research and prove the names?"
+            )
+        )
+
+    def test_retrieval_query_removes_chatty_watch_framing(self):
+        query = factual_evidence._retrieval_query(
+            "Let's watch JoJo's Bizarre Adventure together, I like Jotaro. "
+            "Could you do proper research and provide sources?"
+        )
+        self.assertIn("JoJo's Bizarre Adventure", query)
+        self.assertNotIn("together", query.casefold())
+        self.assertNotIn("proper research", query.casefold())
+
+
 class NumericEvidenceRelevanceTests(unittest.IsolatedAsyncioTestCase):
     async def test_numeric_fact_in_unrelated_sentence_does_not_pass_gate(self):
         wikipedia = {
