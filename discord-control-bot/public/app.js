@@ -4,6 +4,7 @@ const $ = (selector) => document.querySelector(selector);
 const alertBox = $("#alert");
 let appId = "";
 let modelCatalog = null;
+let savedFacts = [];
 const moduleInfo = {
   overview: ["Overview", "◈"], system: ["System monitor", "⌁"], services: ["Services", "◉"],
   containers: ["Containers", "▦"], network: ["Network", "⌘"], assistant: ["AI assistant", "✳"], power: ["Power controls", "⏻"]
@@ -97,6 +98,46 @@ function renderContainers(data) {
     finally { button.disabled = false; }
   }));
 }
+function renderMemoryFacts(facts) {
+  savedFacts = Array.isArray(facts) ? facts : [];
+  $("#memory-facts").innerHTML = savedFacts.length ? savedFacts.map((fact, index) => `<div class="memory-fact"><span>${escapeHtml(fact)}</span><button class="action-button" data-memory-index="${index}" type="button">Forget</button></div>`).join("") : '<p class="muted">No saved facts yet.</p>';
+  document.querySelectorAll("[data-memory-index]").forEach(button => button.addEventListener("click", async () => {
+    const fact = savedFacts[Number(button.dataset.memoryIndex)];
+    if (!fact || !window.confirm("Forget this saved fact?")) return;
+    button.disabled = true;
+    try {
+      const result = await api("/api/ai/memory/forget", { method: "POST", body: JSON.stringify({ query: fact }) });
+      renderMemoryFacts(result.memory.facts);
+      alert(result.removed ? "Saved fact forgotten." : "No matching fact found.", "ok");
+    } catch (error) { alert(error.message, "error"); }
+    finally { button.disabled = false; }
+  }));
+}
+$("#memory-profile-form").addEventListener("submit", async event => {
+  event.preventDefault();
+  const button = event.submitter;
+  if (button) button.disabled = true;
+  try {
+    await api("/api/ai/memory/profile", { method: "POST", body: JSON.stringify({ profile: $("#memory-profile").value }) });
+    alert("Persistent profile saved.", "ok");
+  } catch (error) { alert(error.message, "error"); }
+  finally { if (button) button.disabled = false; }
+});
+$("#memory-fact-form").addEventListener("submit", async event => {
+  event.preventDefault();
+  const input = $("#memory-fact");
+  const fact = input.value.trim();
+  if (!fact) return;
+  const button = event.submitter;
+  if (button) button.disabled = true;
+  try {
+    const result = await api("/api/ai/memory/remember", { method: "POST", body: JSON.stringify({ fact }) });
+    input.value = "";
+    renderMemoryFacts(result.facts);
+    alert("Fact saved to persistent memory.", "ok");
+  } catch (error) { alert(error.message, "error"); }
+  finally { if (button) button.disabled = false; }
+});
 function populateAiModels() {
   const provider = $("#ai-provider").value;
   const info = modelCatalog?.providers?.[provider];
@@ -212,9 +253,11 @@ async function start() {
     const overview = await api("/api/overview");
     drawCards(overview.sections);
     selectView("overview");
-    const [system, serviceData, containerData, projectData, models, network] = await Promise.all([api("/api/system"), api("/api/services"), api("/api/containers"), api("/api/projects"), api("/api/ai/models"), api("/api/network")]);
+    const [system, serviceData, containerData, projectData, models, network, memory] = await Promise.all([api("/api/system"), api("/api/services"), api("/api/containers"), api("/api/projects"), api("/api/ai/models"), api("/api/network"), api("/api/ai/memory").catch(() => ({ profile: "", facts: [] }))]);
     modelCatalog = models;
     populateAiModels();
+    $("#memory-profile").value = memory.profile || "";
+    renderMemoryFacts(memory.facts || []);
     $("#cpu-value").textContent = `${system.cpu.usagePercent}%`;
     $("#cpu-detail").textContent = `${system.cpu.cores} logical cores · load ${system.cpu.loadAverage.join(" / ")}`;
     $("#cpu-meter").style.width = `${system.cpu.usagePercent}%`;
