@@ -1126,12 +1126,18 @@ async def ollama_chat_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await guard(update):
         return
     key = _chat_key(update)
-    if key in CHAT_SESSIONS:
-        await update.effective_message.reply_text("AI chat is already active. Use /bye to end it.")
-        return
     args = list(context.args or [])
     if args and args[0].casefold() == "status":
-        await update.effective_message.reply_text("No active AI chat." if key not in CHAT_SESSIONS else "AI chat is active.")
+        session = CHAT_SESSIONS.get(key)
+        if session:
+            await update.effective_message.reply_text(
+                f"AI chat active. Provider: {session.get('provider', 'ollama')}; model: {session['model']}."
+            )
+        else:
+            await update.effective_message.reply_text("No active AI chat.")
+        return
+    if key in CHAT_SESSIONS:
+        await update.effective_message.reply_text("AI chat is already active. Use /bye to end it.")
         return
     if args and args[0].casefold() != "refresh":
         target = " ".join(args).strip()
@@ -1152,6 +1158,7 @@ async def ollama_chat_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     status = await update.effective_message.reply_text("🧠 Checking available AI models…")
     try:
+        await _ensure_ollama()
         local_models = await _ollama_models()
     except (RuntimeError, httpx.HTTPError, ValueError) as exc:
         local_models = []
@@ -1168,9 +1175,9 @@ async def ollama_chat_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         note += " Gemini is disabled until GEMINI_API_KEY is configured."
     if not local_models:
-        note += f"\\nLocal Ollama unavailable: {local_error or 'no installed models'}"
-    await status.edit_text("🤖 AI MODEL SELECTOR\\n━━━━━━━━━━━━━━━━━━\\n" + note +
-        "\\n\\nUse /chat MODELNAME to select directly.",
+        note += f"\nLocal Ollama unavailable: {local_error or 'no installed models'}"
+    await status.edit_text("🤖 AI MODEL SELECTOR\n━━━━━━━━━━━━━━━━━━\n" + note +
+        "\n\nUse /chat MODELNAME to select directly.",
         reply_markup=InlineKeyboardMarkup(rows) if rows else None)
 
 
@@ -1186,7 +1193,7 @@ async def _start_chat_session(update, context, provider, model):
     context.user_data.pop("ollama_models", None)
     context.user_data.pop("gemini_models", None)
     await update.effective_message.reply_text(
-        f"{'☁️' if provider == 'gemini' else '🦙'} AI chat active\\nProvider: {provider.title()}\\nModel: {model}\\n\\n"
+        f"{'☁️' if provider == 'gemini' else '🦙'} AI chat active\nProvider: {provider.title()}\nModel: {model}\n\n"
         "Saved memory and profile commands work with either provider. Use /bye to end chat."
     )
 
@@ -1202,6 +1209,7 @@ async def chat_provider_callback(update: Update, context: ContextTypes.DEFAULT_T
         return
     if query.data == "chat:local":
         try:
+            await _ensure_ollama()
             local_models = await _ollama_models()
         except (RuntimeError, httpx.HTTPError, ValueError) as exc:
             await query.edit_message_text(f"Couldn't query local Ollama: {str(exc)[:350]}")
@@ -1212,7 +1220,7 @@ async def chat_provider_callback(update: Update, context: ContextTypes.DEFAULT_T
         if GEMINI_API_KEY:
             rows.append([InlineKeyboardButton("☁️ Gemini models →", callback_data="chat:gemini")])
         await query.edit_message_text(
-            "🤖 LOCAL AI MODELS\\n━━━━━━━━━━━━━━━━━━\\nSelect a local model or open Gemini.",
+            "🤖 LOCAL AI MODELS\n━━━━━━━━━━━━━━━━━━\nSelect a local model or open Gemini.",
             reply_markup=InlineKeyboardMarkup(rows) if rows else None,
         )
         return
@@ -1232,7 +1240,7 @@ async def chat_provider_callback(update: Update, context: ContextTypes.DEFAULT_T
     rows = [[InlineKeyboardButton("✨ " + model_display_name(name), callback_data=f"gemini:model:{i}")]
             for i, name in enumerate(models[:40])]
     rows.append([InlineKeyboardButton("⬅️ Local models", callback_data="chat:local")])
-    await status.edit_text("☁️ GEMINI MODELS\\n━━━━━━━━━━━━━━━━━━\\nSelect a model or use /chat MODELNAME.",
+    await status.edit_text("☁️ GEMINI MODELS\n━━━━━━━━━━━━━━━━━━\nSelect a model or use /chat MODELNAME.",
         reply_markup=InlineKeyboardMarkup(rows))
 
 
@@ -2996,8 +3004,6 @@ def main():
     app.add_handler(CommandHandler("profile", ollama_profile_command))
     app.add_handler(CommandHandler("remember", ollama_remember_command))
     app.add_handler(CommandHandler("forget", ollama_forget_command))
-    app.add_handler(CallbackQueryHandler(chat_provider_callback, pattern=r"^chat:(?:gemini|local)$"))
-    app.add_handler(CallbackQueryHandler(gemini_model_selected, pattern=r"^gemini:model:"))
     app.add_handler(CallbackQueryHandler(chat_provider_callback, pattern=r"^chat:(?:gemini|local)$"))
     app.add_handler(CallbackQueryHandler(gemini_model_selected, pattern=r"^gemini:model:"))
     app.add_handler(CallbackQueryHandler(ollama_model_selected, pattern=r"^ollama:model:"))
