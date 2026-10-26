@@ -23,18 +23,22 @@
     <section class="main">
       <header class="topbar"><div><div class="eyebrow">LINUX REMOTE OPERATIONS</div><h1 id="page-title">Overview</h1></div><div class="profile"><span class="avatar">M</span><div><strong id="user-name">Discord session</strong><small id="user-state">Checking authorization…</small></div></div></header>
       <div class="content">
-        <section class="welcome"><div><span class="eyebrow">YOUR MACHINE, AT A GLANCE</span><h2>Welcome back.</h2><p>One cockpit for system health, services, containers, and your local AI.</p></div><div class="orb" aria-hidden="true"><span></span><i></i></div></section>
+        <section class="welcome" data-panel="overview"><div><span class="eyebrow">YOUR MACHINE, AT A GLANCE</span><h2>Welcome back.</h2><p>One cockpit for system health, services, containers, and your local AI.</p></div><div class="orb" aria-hidden="true"><span></span><i></i></div></section>
         <div id="alert" class="alert" role="status">Connecting to Discord…</div>
-        <section class="section-head"><div><h3>Control modules</h3><p>Connected to your private workspace</p></div><span class="pill">OWNER ACCESS ONLY</span></section>
-        <div id="cards" class="cards"></div>
-        <section class="section-head metrics-heading"><div><h3>Live system snapshot</h3><p id="sampled-at">Waiting for an authorized session</p></div><span class="pill">READ ONLY</span></section>
-        <div id="metrics" class="metrics">
+        <section class="section-head" data-panel="overview"><div><h3>Control modules</h3><p>Connected to your private workspace</p></div><span class="pill">OWNER ACCESS ONLY</span></section>
+        <div id="cards" class="cards" data-panel="overview"></div>
+        <section class="section-head metrics-heading" data-panel="system"><div><h3>Live system snapshot</h3><p id="sampled-at">Waiting for an authorized session</p></div><span class="pill">READ ONLY</span></section>
+        <div id="metrics" class="metrics" data-panel="system">
           <article class="metric"><span>CPU USAGE</span><strong id="cpu-value">--</strong><small id="cpu-detail">Waiting for data</small><div class="meter"><i id="cpu-meter"></i></div></article>
           <article class="metric"><span>MEMORY</span><strong id="memory-value">--</strong><small id="memory-detail">Waiting for data</small><div class="meter"><i id="memory-meter"></i></div></article>
           <article class="metric"><span>ROOT STORAGE</span><strong id="disk-value">--</strong><small id="disk-detail">Waiting for data</small><div class="meter"><i id="disk-meter"></i></div></article>
           <article class="metric"><span>UPTIME</span><strong id="uptime-value">--</strong><small id="host-detail">Waiting for data</small></article>
         </div>
-        <section class="process-panel"><div class="section-head"><div><h3>Top processes</h3><p>Read-only snapshot from the host</p></div></div><div id="processes" class="processes"><p class="muted">Waiting for data</p></div></section>
+        <section class="process-panel" data-panel="system"><div class="section-head"><div><h3>Top processes</h3><p>Read-only snapshot from the host</p></div></div><div id="processes" class="processes"><p class="muted">Waiting for data</p></div></section>
+        <section class="data-panel" data-panel="services"><div class="section-head"><div><h3>Service health</h3><p>Read-only systemd status for known services</p></div><span class="pill">STATUS ONLY</span></div><div id="services" class="inventory"><p class="muted">Waiting for data</p></div></section>
+        <section class="data-panel" data-panel="containers"><div class="section-head"><div><h3>Running containers</h3><p>Docker inventory, no controls enabled</p></div><span class="pill">READ ONLY</span></div><div id="containers" class="inventory"><p class="muted">Waiting for data</p></div></section>
+        <section class="data-panel" data-panel="network"><div class="section-head"><div><h3>Network interfaces</h3><p>Interfaces visible to the Activity host</p></div><span class="pill">LOCAL HOST</span></div><div id="interfaces" class="interface-list"><p class="muted">Waiting for data</p></div></section>
+        <section class="data-panel" data-panel="assistant"><div class="section-head"><div><h3>AI assistant</h3><p>Ollama and Gemini integration is not connected yet</p></div><span class="pill">NOT CONNECTED</span></div><div class="assistant-placeholder"><span class="module-icon">✳</span><h3>AI chat will connect after the shared control layer</h3><p>The Activity won't send prompts anywhere until the existing provider/model and memory logic is integrated safely.</p></div></section>
         <section class="bridge-panel"><div class="bridge-icon">⌁</div><div class="bridge-copy"><span class="eyebrow">LOCAL BRIDGE</span><h3 id="bridge-title">Waiting for the Activity host</h3><p id="bridge-detail">The Activity host is online. Live read-only metrics are available; service controls and AI actions still need their shared control layer.</p></div><span class="status-chip"><span class="pulse"></span> READ ONLY</span></section>
         <footer><span>NEXUS CONTROL <b>·</b> PRIVATE BUILD</span><button id="logout" class="quiet-button">End session ↗</button></footer>
       </div>
