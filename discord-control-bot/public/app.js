@@ -7,6 +7,9 @@ const moduleInfo = {
   overview: ["Overview", "◈"], system: ["System monitor", "⌁"], services: ["Services", "◉"],
   containers: ["Containers", "▦"], network: ["Network", "⌘"], assistant: ["AI assistant", "✳"]
 };
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
+}
 function alert(message, kind = "") {
   alertBox.textContent = message;
   alertBox.className = `alert ${kind}`;
@@ -28,8 +31,15 @@ function selectView(view) {
   const info = moduleInfo[view] || moduleInfo.overview;
   $("#page-title").textContent = info[0];
   document.querySelectorAll(".nav").forEach(button => button.classList.toggle("active", button.dataset.view === view));
-  if (view === "overview") alert("Dashboard connected. Machine bridge is not configured yet.");
-  else alert(`${info[0]} module selected. Live data and controls will activate when the authenticated CachyOS bridge is connected.`);
+  document.querySelectorAll("[data-panel]").forEach(panel => {
+    panel.style.display = panel.dataset.panel === view ? "" : "none";
+  });
+  if (view === "overview") alert("Dashboard connected. Live host metrics are available; control actions are still read-only.");
+  else if (view === "system") alert("Live system metrics are read-only.");
+  else if (view === "services") alert("Service inventory is read-only. Start/stop/restart actions are not enabled yet.");
+  else if (view === "containers") alert("Container inventory is read-only. Container actions are not enabled yet.");
+  else if (view === "network") alert("Network interface details are read-only.");
+  else alert("AI provider integration is not connected yet.");
 }
 document.querySelectorAll(".nav").forEach(button => button.addEventListener("click", () => selectView(button.dataset.view)));
 
@@ -63,7 +73,7 @@ async function start() {
     $("#user-state").textContent = "Allowlist verified";
     const overview = await api("/api/overview");
     drawCards(overview.sections);
-    const system = await api("/api/system");
+    const [system, serviceData, containerData] = await Promise.all([api("/api/system"), api("/api/services"), api("/api/containers")]);
     $("#cpu-value").textContent = `${system.cpu.usagePercent}%`;
     $("#cpu-detail").textContent = `${system.cpu.cores} logical cores · load ${system.cpu.loadAverage.join(" / ")}`;
     $("#cpu-meter").style.width = `${system.cpu.usagePercent}%`;
@@ -76,7 +86,10 @@ async function start() {
     $("#uptime-value").textContent = system.uptime;
     $("#host-detail").textContent = `${system.hostname} · ${system.platform}/${system.architecture}`;
     $("#sampled-at").textContent = `Sampled ${new Date(system.sampledAt).toLocaleTimeString()} · interfaces: ${system.networkInterfaces.join(", ") || "none"}`;
-    $("#processes").innerHTML = system.topProcesses.length ? system.topProcesses.map(proc => `<div class="process-row"><strong title="${proc.name}">${proc.name} <span style="text-align:left">#${proc.pid}</span></strong><span>CPU ${proc.cpuPercent}%</span><span>RAM ${proc.memoryPercent}%</span></div>`).join("") : '<p class="muted">Process list unavailable</p>';
+    $("#processes").innerHTML = system.topProcesses.length ? system.topProcesses.map(proc => `<div class="process-row"><strong title="${escapeHtml(proc.name)}">${escapeHtml(proc.name)} <span style="text-align:left">#${proc.pid}</span></strong><span>CPU ${proc.cpuPercent}%</span><span>RAM ${proc.memoryPercent}%</span></div>`).join("") : '<p class="muted">Process list unavailable</p>';
+    $("#services").innerHTML = serviceData.services.map(service => `<div class="inventory-row"><div><strong>${escapeHtml(service.name)}</strong><small>${escapeHtml(service.scope)} · ${escapeHtml(service.unit)}</small></div><span class="state state-${escapeHtml(service.state)}">${escapeHtml(service.state)}</span></div>`).join("");
+    $("#containers").innerHTML = containerData.available ? (containerData.containers.length ? containerData.containers.map(item => `<div class="inventory-row"><div><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.image)} · ${escapeHtml(item.id)}</small></div><span class="state state-active">${escapeHtml(item.status)}</span></div>`).join("") : '<p class="muted">No running containers detected.</p>') : `<p class="muted">Docker inventory unavailable: ${escapeHtml(containerData.detail)}</p>`;
+    $("#interfaces").innerHTML = system.networkInterfaces.length ? system.networkInterfaces.map(name => `<span class="interface-chip">${escapeHtml(name)}</span>`).join("") : '<p class="muted">No active non-loopback interfaces detected.</p>';
     $("#bridge-title").textContent = overview.machine.state === "connected" ? "Host metrics connected" : "Waiting for the host";
     $("#bridge-detail").textContent = overview.machine.detail;
     const statusChip = document.querySelector(".status-chip");
