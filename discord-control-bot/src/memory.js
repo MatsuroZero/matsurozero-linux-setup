@@ -1,4 +1,5 @@
 import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { randomBytes } from "node:crypto";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -40,8 +41,8 @@ export function validateFact(fact) {
   return fact.trim();
 }
 export function validateForgetQuery(query) {
-  if (typeof query !== "string" || !query.trim() || query.trim().length > 100) {
-    throw Object.assign(new Error("Forget query must contain 1 to 100 characters"), { status: 400 });
+  if (typeof query !== "string" || !query.trim() || query.trim().length > 500) {
+    throw Object.assign(new Error("Forget query must contain 1 to 500 characters"), { status: 400 });
   }
   return query.trim().toLocaleLowerCase();
 }
@@ -63,7 +64,7 @@ export async function getMemory(filePath) {
 export async function saveMemory(memory, filePath) {
   const target = resolvePath(filePath);
   await mkdir(dirname(target), { recursive: true, mode: 0o700 });
-  const temp = `${target}.tmp-${process.pid}`;
+  const temp = `${target}.tmp-${process.pid}-${randomBytes(6).toString("hex")}`;
   await writeFile(temp, JSON.stringify(normalizeMemory(memory), null, 2) + "\n", { encoding: "utf8", mode: 0o600 });
   await rename(temp, target);
   await chmod(target, 0o600).catch(() => {});
