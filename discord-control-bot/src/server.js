@@ -116,7 +116,7 @@ export function createAppServer() {
         if (req.method === "GET" && url.pathname === "/api/overview") {
           return send(res, 200, {
             user: { id: session.userId, name: session.username },
-            machine: { state: "disconnected", detail: "Local control bridge is not connected yet." },
+            machine: { state: "connected", detail: "Read-only metrics come from the host running this Activity. Service controls and AI actions are not enabled yet." },
             sections: [
               { id: "system", title: "System", description: "CPU, memory, storage, temperature, uptime" },
               { id: "services", title: "Services", description: "Jellyfin, Docker, Ollama, LocalNexus and dashboards" },
