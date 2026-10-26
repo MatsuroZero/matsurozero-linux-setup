@@ -1,0 +1,36 @@
+name: Discord Control Activity CI
+
+on:
+  pull_request:
+    paths:
+      - "discord-control-bot/**"
+      - ".github/workflows/discord-control-ci.yml"
+  push:
+    branches: [main, discord-nexus-unified]
+    paths:
+      - "discord-control-bot/**"
+      - ".github/workflows/discord-control-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: discord-control-bot
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: discord-control-bot/package-lock.json
+      - name: Check JavaScript syntax
+        run: npm run check
+      - name: Run unit and API tests
+        run: npm test
