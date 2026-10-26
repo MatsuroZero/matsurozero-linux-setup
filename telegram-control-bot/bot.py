@@ -755,6 +755,14 @@ def _recent_media_title(session, current_text=""):
     """Resolve a clear 'this show/anime' reference from recent user messages."""
     history = session.get("history", []) if isinstance(session, dict) else []
     current = " ".join(str(current_text or "").casefold().split())
+    current_match = re.search(
+        r"\bwatch\s+(.+?)(?=\s+together\b|[,;.!?]|$)",
+        str(current_text or ""), flags=re.I,
+    )
+    if current_match:
+        title = current_match.group(1).strip(" \t.,;:!?")
+        if 2 <= len(title) <= 100:
+            return title
     for item in reversed(history if isinstance(history, list) else []):
         if not isinstance(item, dict) or item.get("role") != "user":
             continue
