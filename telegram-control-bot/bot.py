@@ -801,7 +801,8 @@ def _extract_explicit_temporary_fact(session, user_text):
 
     preference = re.search(
         r"\bI\s+(?:(?:personally|really)\s+)*(love|like|enjoy|prefer|dislike|hate)\s+"
-        r"(.+?)(?=[.!?](?:\s|$)|$)",
+        r"(.+?)(?=\s*,\s*|\s+(?:do you know|have you heard|what do you|what(?:'s| is)|"
+        r"why|how|when|where|can you|could you|would you|tell me)\b|[.!?]|$)",
         text, flags=re.I,
     )
     if preference:
@@ -1226,12 +1227,22 @@ def _answer_arithmetic_question(user_text):
     text = " ".join(str(user_text or "").split()).strip()
     if not text or len(text) > 600:
         return None
+    # Capture a math expression even when conversational filler follows it.
+    # The clause boundary prevents trailing prose from becoming part of the expression.
     match = re.search(
-        r"(?:what(?:'s|s|\s+is)\s+|calculate\s+|compute\s+|solve\s+)?"
+        r"(?:what(?:'s|s|\s+is)\s+|calculate\s+|compute\s+|solve\s+)"
         r"([+-]?\d[\d\s]*(?:(?:\*\*|//|[+*/%^\-])\s*[+-]?\d[\d\s]*)+)"
-        r"(?:\s*[?!.]*)$",
+        r"(?=\s*(?:[,;.!?]|$)|\s+(?:well|technically|please|thanks|because|but|"
+        r"i['’]?m|i am|could you|would you|and also|also tell|can you)\b)",
         text, flags=re.I,
     )
+    if not match:
+        match = re.search(
+            r"(?:what(?:'s|s|\s+is)\s+|calculate\s+|compute\s+|solve\s+)?"
+            r"([+-]?\d[\d\s]*(?:(?:\*\*|//|[+*/%^\-])\s*[+-]?\d[\d\s]*)+)"
+            r"(?:\s*[?!.]*)$",
+            text, flags=re.I,
+        )
     if match:
         expression = match.group(1)
     else:
@@ -1251,6 +1262,36 @@ def _answer_arithmetic_question(user_text):
         return str(value.numerator) if value.denominator == 1 else f"{value.numerator}/{value.denominator}"
     except (SyntaxError, ValueError, ZeroDivisionError, OverflowError, RecursionError, MemoryError):
         return None
+
+
+def _is_math_primary_request(user_text):
+    """Recognize a math request with conversational filler but no second task."""
+    text = " ".join(str(user_text or "").split()).strip().casefold()
+    if not text or not re.search(r"\b(?:what(?:'s|s|\s+is)|calculate|compute|solve)\b", text):
+        return False
+    if re.search(
+        r"\b(?:and also|also tell me|provide (?:me )?(?:sources|references)|"
+        r"give me (?:sources|references)|then explain|explain why|what about|"
+        r"who is|where is|when did|why does|how does)\b",
+        text,
+    ):
+        return False
+    expressions = re.findall(
+        r"(?<!\w)[+-]?\d[\d\s]*(?:(?:\*\*|//|[+*/%^\-])\s*[+-]?\d[\d\s]*)+",
+        text,
+    )
+    return len(expressions) == 1
+
+
+def _wants_long_answer(user_text):
+    """Spend a larger generation budget only when the user asks for depth."""
+    text = " ".join(str(user_text or "").split()).casefold()
+    return bool(re.search(
+        r"\b(?:step by step|in detail|detailed|comprehensive|thorough|"
+        r"long answer|full explanation|sources|references|citations|"
+        r"for my research|compare and contrast|pros and cons|at least \d+)\b",
+        text,
+    ))
 
 
 def _answer_from_recent_disclosures(user_text, prior_history):
@@ -1404,9 +1445,13 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
     try:
         arithmetic_result = _answer_arithmetic_question(user_text)
         standalone_arithmetic = _is_standalone_arithmetic_question(user_text)
-        if arithmetic_result is not None and standalone_arithmetic:
-            session["history"] = (history + [{"role": "assistant", "content": arithmetic_result}])[-12:]
-            await message.reply_text(arithmetic_result)
+        if arithmetic_result is not None and (standalone_arithmetic or _is_math_primary_request(user_text)):
+            direct_math_answer = (
+                arithmetic_result if standalone_arithmetic
+                else f"The answer is {arithmetic_result}."
+            )
+            session["history"] = (history + [{"role": "assistant", "content": direct_math_answer}])[-12:]
+            await message.reply_text(direct_math_answer)
             return
 
         # Do not let a fast path discard the non-math parts of a mixed message.
@@ -1432,6 +1477,12 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         # reply. On CPU-limited machines, concurrent Ollama requests compete for
         # the same cores and can make the user-facing response noticeably slower.
         system_prompt = _ollama_system_prompt(user_text, session.get("temporary_facts", []))
+        if re.fullmatch(r"(?:continue|go on|finish(?: the answer)?|keep going)", user_text.strip(), flags=re.I):
+            if any(item.get("role") == "assistant" for item in history[:-1] if isinstance(item, dict)):
+                system_prompt += (
+                    "\n\nCONTINUATION REQUEST: Continue from the end of your previous answer. "
+                    "Do not repeat completed sections. Finish the unfinished point first."
+                )
         # Retrieve a small external excerpt only for objective factual questions.
         # The helper excludes personal-memory, current-events, creative, and math queries.
         # Retrieval failure is non-fatal and never prevents a normal Ollama answer.
@@ -1451,6 +1502,7 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
                 "Include this exact result, and also answer every other part of the user's message. "
                 "Do not recalculate it or ignore the non-math content."
             )
+        output_token_budget = 256 if _wants_long_answer(user_text) else 128
         generation_started = time.perf_counter()
         async with httpx.AsyncClient(
             timeout=httpx.Timeout(OLLAMA_TIMEOUT, connect=5.0)
@@ -1467,9 +1519,9 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
                         # Keep output bounded for the CPU-only i3-class host.
                         # Fewer generated tokens mean shorter wait times on local models.
                         "num_ctx": 2048,
-                        # Cap routine replies to reduce CPU-only generation latency.
-                        # Ask follow-up questions for additional detail when needed.
-                        "num_predict": 128,
+                        # Routine replies stay short; explicit research/detail requests
+                        # get more room without slowing every ordinary conversation.
+                        "num_predict": output_token_budget,
                         "temperature": 0.58,
                         "top_p": 0.85,
                         "top_k": 30,
@@ -1507,8 +1559,22 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         answer = payload.get("message", {}).get("content", "").strip()
         if not answer:
             raise RuntimeError("Ollama returned no response text.")
+        done_reason = str(payload.get("done_reason") or "").casefold()
+        hit_output_limit = done_reason in {"length", "max_tokens"} or (
+            eval_count >= output_token_budget and eval_count > 0
+        )
+        if hit_output_limit:
+            log.warning(
+                "Ollama output may be truncated model=%s done_reason=%s eval_count=%s budget=%s",
+                session["model"], done_reason or "not-reported", eval_count, output_token_budget,
+            )
         # Small models sometimes echo a sentence or paragraph inside one answer.
         answer = _deduplicate_answer_text(answer)
+        if hit_output_limit:
+            answer += (
+                "\n\n⚠️ I may have reached my response limit before finishing. "
+                "Send “continue” and I’ll pick up from here."
+            )
         if evidence_prompt:
             support = assess_claim_level_support(user_text, answer, evidence)
             if support["status"] == "candidate_supported":
