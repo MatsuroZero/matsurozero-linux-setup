@@ -121,16 +121,18 @@ export function validateContainerAction(containerId, action) {
 }
 export async function performContainerAction(containerId, action) {
   const request = validateContainerAction(containerId, action);
-  const listed = await runReadOnly("docker", ["ps", "-a", "--format", "{{.ID}}\\t{{.Names}}"]);
+  const listed = await runReadOnly("docker", ["ps", "-a", "--format", "{{json .}}"]);
   if (!listed.ok && !listed.stdout) throw Object.assign(new Error("Docker is unavailable or permission was denied"), { status: 503 });
-  const found = listed.stdout.split("\\n").map(line => line.split("\\t")).find(([id, name]) => id === request.containerId || name === request.containerId);
+  const found = listed.stdout.split("\\n").filter(Boolean).map(line => {
+    try { const item = JSON.parse(line); return { id: item.ID, name: item.Names }; } catch { return null; }
+  }).filter(Boolean).find(item => item.id === request.containerId || item.name === request.containerId);
   if (!found) throw Object.assign(new Error("Container is not in the current Docker inventory"), { status: 404 });
   try {
-    await execFileAsync("docker", [request.action, found[0]], { timeout: 30_000, maxBuffer: 32 * 1024, windowsHide: true });
+    await execFileAsync("docker", [request.action, found.id], { timeout: 30_000, maxBuffer: 32 * 1024, windowsHide: true });
   } catch {
     throw Object.assign(new Error("Docker action failed. Check container state and Docker permissions."), { status: 503 });
   }
-  console.info(JSON.stringify({ event: "container_action", containerId: found[0], action, at: new Date().toISOString() }));
+  console.info(JSON.stringify({ event: "container_action", containerId: found.id, action, at: new Date().toISOString() }));
   return { ok: true, containerId: found[0], action };
 }
 
