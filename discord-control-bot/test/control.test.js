@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { getSystemSnapshot, getServiceSnapshot, getContainerSnapshot, getNetworkSnapshot, getProjectSnapshot, validateProjectAction } from "../src/control.js";
+import { getSystemSnapshot, getServiceSnapshot, getContainerSnapshot, getNetworkSnapshot, getProjectSnapshot, validateProjectAction, validatePowerAction } from "../src/control.js";
 
 test("system snapshot returns bounded, typed read-only metrics", async () => {
   const snapshot = await getSystemSnapshot();
@@ -59,4 +59,10 @@ test("Docker project inventory is bounded and reports availability", async () =>
   const projects = await getProjectSnapshot();
   assert.deepEqual(projects.map(project => project.id), ["odysseus", "uptime-kuma", "localnexus"]);
   assert.ok(projects.every(project => typeof project.available === "boolean" && Array.isArray(project.containers)));
+});
+
+test("power actions accept only the four fixed Serpantinum verbs", () => {
+  assert.equal(validatePowerAction("lock").commandArgs[0], "lock");
+  assert.equal(validatePowerAction("shutdown").commandArgs[0], "poweroff");
+  assert.throws(() => validatePowerAction("run-command"), error => error.status === 400);
 });
