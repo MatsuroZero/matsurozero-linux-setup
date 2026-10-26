@@ -1,76 +1,81 @@
 # Discord Control Activity
 
-A private Discord Activity web app for monitoring a Linux host and safely managing an allowlisted set of services and Docker containers. This is an incremental implementation, not yet full Telegram/Nexus feature parity.
+A private Discord Activity dashboard for monitoring and controlling the Linux host that runs it. This is an incremental build in a draft PR, not yet a deployed or fully parity-complete replacement for the Telegram bot and Nexus CLI.
 
 ## Implemented
 
-- Responsive dark Activity dashboard with Overview, System, Services, Containers, Network, and AI Assistant panels.
-- Pinned Discord Embedded App SDK v2.5.0 browser import; the Activity initializes through the SDK rather than relying on a missing global.
-- A server-side command registration script configures the Activity Entry Point for user-installed private-channel contexts. It uses the bot token from the environment only and never sends it to the browser.
-- Node.js HTTP server, health/config endpoints, Discord OAuth authorization-code exchange, Embedded App SDK authentication, and secure session cookie.
-- Server-side allowlist validation against `DISCORD_ALLOWED_USER_ID`; every private API route re-checks the authenticated session identity.
-- Read-only system metrics: sampled CPU utilization, memory, root filesystem usage, uptime, thermal-zone readings when exposed by Linux, network interface names, sampled per-interface RX/TX throughput, and top processes.
-- Read-only inventory of known Nexus systemd services and Docker containers, including systemd autostart state.
-- Health endpoint checks and a Nexus-style doctor report covering Node.js, Docker, systemd services, Compose files, and the saved registry.
-- Confirmed start/stop/restart and enable/disable-autostart actions for a fixed allowlist of services, plus fixed Docker Compose project/container controls and bounded logs. Mutations use server-side origin checks and per-user action cooldown. No arbitrary shell endpoint exists.
-- Fixed Serpantinum lock, suspend, reboot, and shutdown actions, each guarded by an explicit UI confirmation and server-side allowlist.
-- Read-only listing and confirmed execution of pre-registered Nexus commands and profiles. The Activity accepts only saved registry names, uses argv arrays without enabling shell mode, and stops a profile at the first failed step.
-- Optional AI chat using Ollama on the Activity host or Gemini when `GEMINI_API_KEY` is configured. Model choices are constrained to available Ollama tags and a fixed Gemini model allowlist; conversation history is session-only.
-- Persistent profile and remembered-fact management using the same default JSON path as the Telegram bot (`~/.local/share/telegram-control-bot/ollama_memory.json`). Set `OLLAMA_MEMORY_PATH` consistently in both services if the Telegram bot overrides it.
-- System service actions use `sudo -n` and fail closed unless the host has narrowly scoped sudo permissions. User service actions require a working user systemd session. Docker actions require Docker access for the server process.
-- Tests cover authorization, API boundaries, metric shape, inventory shape, and input validation.
+- Responsive Activity UI with Overview, System, Services, Containers, Network, AI Assistant, Dashboards, Nexus Commands, Diagnostics, and Power Controls.
+- Discord Embedded App SDK browser import, server-side OAuth code exchange, secure session cookie, and strict allowlist checks against `DISCORD_ALLOWED_USER_ID`.
+- Read-only CPU, memory, root disk, uptime, top processes, Linux thermal zones when exposed, network interfaces, and sampled RX/TX throughput.
+- Fixed allowlist of systemd services, status/autostart state, start/stop/restart, and enable/disable autostart actions.
+- Fixed Docker container inventory and start/stop/restart/log actions, plus configured Compose project status/actions/logs for `odysseus`, `uptime-kuma`, and `localnexus`.
+- Confirmation-based Serpantinum lock, suspend, reboot, and shutdown actions.
+- Health endpoint checks and a Nexus-style doctor summary.
+- Listing and confirmed execution of pre-registered Nexus commands/profiles. The Activity accepts saved names only and executes stored argument arrays without enabling shell mode. Profiles stop after the first failed step.
+- Ollama local chat and optional Gemini chat with bounded input, model allowlists, session-only conversation history, and persistent profile/fact memory.
+- Persistent memory uses the Telegram bot's default JSON path: `~/.local/share/telegram-control-bot/ollama_memory.json`. Set `OLLAMA_MEMORY_PATH` consistently if the Telegram bot uses a custom path.
+- Local dashboard links and a PIN-protected credential reveal endpoint. The PIN is blank by default, must be configured to at least six characters, and is rate-limited after failed attempts.
+- Node.js tests for authorization, API boundaries, control validation, memory persistence, registry validation, and diagnostic response shapes.
 
-## Requirements
+## Requirements and Discord setup
 
 - Node.js 22 or newer.
-- HTTPS hosting for the deployed Activity.
-- Discord application with Activities enabled and an Activity URL mapping.
-- Add `https://127.0.0.1` as the OAuth redirect URI in the Developer Portal, following the official Activity guide.
-- Configure user installation and DM/private-channel contexts. Discord's default Activity Launch entry point is expected to launch the Activity, but DM launch still needs a real client-side verification.
+- HTTPS hosting for the Activity and an Activity URL mapping in the Discord Developer Portal.
+- Activities enabled for the application.
+- User installation and private-channel contexts enabled. The provided registration script configures a user-installed Entry Point command for private channels.
+- Register the redirect URI used by the server in the Developer Portal. The sample is `https://127.0.0.1`; the server's `DISCORD_REDIRECT_URI` must match the registered value exactly.
+- Configure `DISCORD_APPLICATION_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_ALLOWED_USER_ID`, and `DISCORD_REDIRECT_URI` in the server environment.
+- Set `LINKS_PIN` and only add dashboard credentials if you want the credential reveal feature enabled.
+
+The Entry Point registration script uses `DISCORD_BOT_TOKEN` from the server environment. The token is never sent to the browser or stored in the repository.
 
 ## Install the user service
 
-From the repository's `discord-control-bot` directory, run:
+From the `discord-control-bot` directory:
 
 ```bash
 bash deploy/install-user-service.sh
 ```
 
-The installer creates a private environment file and installs a systemd user unit template. Edit `~/.config/discord-control-activity/env` before starting the service. Set a private `LINKS_PIN` of at least six characters; the sample value is only a placeholder. The installer deliberately does not start the app until you configure the Discord application ID and client secret.
+The installer creates `~/.config/discord-control-activity/env` with private permissions and installs a systemd user unit template. Edit the environment file before starting the service. It deliberately does not start the app until you configure the Discord application ID and client secret.
 
-## Run locally
+After configuration:
 
-### Optional systemd user service template
+```bash
+systemctl --user enable --now discord-control-activity.service
+journalctl --user -u discord-control-activity.service -f
+```
 
-The repository includes `deploy/discord-control-activity.service.example`. Edit its `WorkingDirectory` to the actual clone path, create `~/.config/discord-control-activity/env` with mode `600`, then install the unit under `~/.config/systemd/user/`. The template is a starting point and requires a deployment review, especially if the host needs system-level service control or Docker access. It grants write access to `~/Projects`, the Nexus registry directory, and the default shared memory directory. If saved commands need to write elsewhere, or `OLLAMA_MEMORY_PATH` points to another location, add those paths to `ReadWritePaths` after reviewing the trust implications.
+Review `deploy/discord-control-activity.service.example` before enabling it. The unit has filesystem hardening and grants write access to `~/Projects`, the Nexus registry directory, and the default shared-memory directory. Add other write paths only when needed and after reviewing why a saved command requires them.
 
+## Manual checks
 
+From `discord-control-bot`, with Node.js 22+ and environment variables configured:
 
-1. Copy `.env.example` to an untracked `.env` and fill in values.
-2. Set `DISCORD_APPLICATION_ID`, `DISCORD_CLIENT_SECRET`, and `DISCORD_ALLOWED_USER_ID`.
-3. Set `DISCORD_REDIRECT_URI=https://127.0.0.1` to match the placeholder redirect URI registered in Discord.
-4. Export the environment variables in your shell or configure them in your service manager. This server does not automatically load `.env`.
-5. Run `npm run check`, `npm test`, then `npm start`.
-6. To configure the default Activity launch command for user-installed DMs/private channels, run `npm run register:entrypoint` once with `DISCORD_APPLICATION_ID` and `DISCORD_BOT_TOKEN` set in the server environment. Activities must already be enabled in the Developer Portal. This upserts the global `launch` Entry Point command with Discord's automatic Activity handler.
-6. Open the Activity through Discord. A normal browser preview cannot complete the Embedded App SDK handshake.
+```bash
+npm run check
+npm test
+npm start
+```
 
-To monitor your CachyOS PC, run this server on that PC. When run elsewhere, the metrics and controls apply to the server host, not your PC.
+The GitHub Actions workflow is in `.github/workflows/discord-control-ci.yml`. The connected GitHub integration has not exposed a verifiable successful run for the current head yet, so the test suite must still be considered **unverified**. The workflow includes syntax checks, the Node test suite, and should also validate the installer shell script.
 
-## Still to implement
+## Important limits
 
-1. Verify Activity launch in DMs/private channels on the actual Discord client and complete the Developer Portal URL mapping.
-2. Finish parity gaps in Docker project autostart workflows and additional Nexus maintenance actions.
-3. Extract common control logic so Telegram, Nexus CLI, and Discord share one implementation rather than drift.
-4. Verify the GitHub Actions run. The workflow exists on main and the build branch, but the connected GitHub run-list action only returns PR-triggered runs; no successful run is verified yet.
+- DM/private-channel Activity launch and the Developer Portal URL mapping still require verification in the actual Discord client.
+- The app must run on the PC it is meant to control. If hosted elsewhere, metrics and actions apply to that other host.
+- The current code has not yet extracted one shared control core used by Telegram, Nexus CLI, and Discord, so the implementations can drift.
+- Docker project autostart management and editing/removing saved Nexus commands/profiles are not implemented in the Activity; those can still be managed locally with Nexus CLI.
+- The memory file is shared by path and format, but the Telegram bot does not use the Activity's write coordination. Avoid simultaneous memory edits from both apps until cross-process locking is added.
+- Power actions can disconnect the Activity. System service actions fail closed unless narrowly scoped sudo permissions are configured. Docker actions require Docker access for the server process.
+- The app is not production-ready until CI passes, HTTPS hosting and URL mapping are configured, and DM launch is verified.
 
-## Security
+## Security notes
 
-- Keep the Discord bot token server-side only. Never send it to the browser or commit it.
-- Set a private `LINKS_PIN` before using credential reveal. The PIN is never logged, is checked server-side, and three failed attempts trigger a five-minute lockout. Dashboard credentials are only returned after successful authentication and PIN verification.
-- Rotate any still-active credentials hard-coded in historical repositories.
-- Keep `.env` untracked and never commit client secrets or bridge secrets.
-- All service/container actions use fixed operation allowlists and argument arrays, not a shell. Review the sudoers configuration carefully; do not grant broad passwordless sudo.
-- The app is not production-ready until HTTPS hosting, Activity mapping, DM behavior, and automated tests are verified.
+- Never put the bot token, client secret, Gemini API key, or dashboard passwords in frontend code or Git.
+- Dashboard credentials are returned only after Discord session authentication and successful PIN verification. Three failed PIN attempts trigger a five-minute lockout; credentials are cleared from the UI when leaving the dashboard panel.
+- Service, project, container, power, command, and profile APIs are allowlisted and require an authenticated session. Mutating POST routes reject cross-origin requests.
+- Saved Nexus commands can still perform whatever their local registered argv permits. Review the local registry before running commands or profiles remotely.
 
 ## Official references
 
