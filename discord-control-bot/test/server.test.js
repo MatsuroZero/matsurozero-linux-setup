@@ -39,7 +39,7 @@ test("AI model and chat endpoints require an authenticated Discord session", asy
     assert.equal(models.status, 401);
     const chat = await fetch(base + "/api/ai/chat", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", "origin": new URL(base).origin },
       body: JSON.stringify({ provider: "ollama", model: "qwen3:0.6b", message: "hello" }),
     });
     assert.equal(chat.status, 401);
