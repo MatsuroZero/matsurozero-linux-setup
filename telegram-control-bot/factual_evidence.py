@@ -254,24 +254,41 @@ def _question_requests_numeric_fact(question):
 
 
 def _evidence_has_required_numeric_value(question, excerpt):
-    """Require a question-relevant sentence containing a numeric value.
+    """Require a number in a sentence that mentions the requested quantity.
 
-    A number somewhere in a passage is not enough: for quantitative questions,
-    at least one sentence must contain both a recognized numeric value and a
-    content term from the question. This is still lexical filtering, not answer
-    extraction or semantic verification.
+    Entity overlap alone is insufficient: a planet's diameter should not answer
+    how many moons it has. This remains a lexical gate, not semantic verification.
     """
-    if not _question_requests_numeric_fact(question):
+    text = " ".join(str(question or "").casefold().split())
+    if not _question_requests_numeric_fact(text):
         return True
-    question_terms = _content_tokens(question)
-    for sentence in re.split(r"(?<=[.!?])\s+", str(excerpt or "")):
-        if (
-            _normalized_numeric_values(sentence)
-            and question_terms & _content_tokens(sentence)
-        ):
-            return True
-    return False
 
+    metric_terms = set()
+    count_match = re.search(r"\bhow many\s+([a-z]+)", text)
+    amount_match = re.search(r"\bhow much\s+([a-z]+)", text)
+    if count_match or amount_match:
+        noun = (count_match or amount_match).group(1)
+        metric_terms.update({noun, noun.rstrip("s")})
+    elif re.search(r"\bpopulation\b", text):
+        metric_terms.update({"population", "inhabitant", "inhabitants", "resident", "residents"})
+    elif re.search(r"\bwhat percent(?:age)?\b", text):
+        metric_terms.update({"percent", "percentage"})
+    elif re.search(r"\btemperature\b", text):
+        metric_terms.update({"temperature", "celsius", "fahrenheit"})
+    elif re.search(r"\bhow old\b", text):
+        metric_terms.update({"old", "age", "year", "years"})
+
+    question_terms = _content_tokens(text)
+    for sentence in re.split(r"(?<=[.!?])\s+", str(excerpt or "")):
+        if not _normalized_numeric_values(sentence):
+            continue
+        sentence_terms = _content_tokens(sentence)
+        if not question_terms & sentence_terms:
+            continue
+        if metric_terms and not metric_terms & sentence_terms:
+            continue
+        return True
+    return False
 
 def _evidence_matches_question(question_terms, title, excerpt, minimum_score=0.12):
     """Reject candidates with only incidental overlap with a multi-term question.
