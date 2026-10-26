@@ -44,7 +44,7 @@
           <div class="chat-toolbar"><label for="ai-provider">Provider</label><select id="ai-provider"><option value="ollama">Ollama (local)</option><option value="gemini">Gemini (cloud)</option></select><label for="ai-model">Model</label><select id="ai-model" disabled><option>Loading models…</option></select></div>
           <div id="chat-messages" class="chat-messages"><div class="chat-empty">Choose an available model to start a conversation.</div></div>
           <form id="chat-form" class="chat-form"><textarea id="chat-input" maxlength="4000" rows="3" placeholder="Ask Nexus something…" required></textarea><button id="chat-send" class="send-button" type="submit" disabled>Send ↗</button></form>
-          <p class="chat-note">Chat history is kept in the current server session only. Long-term memory and profile integration are not connected yet.</p>
+          <p class="chat-note">Chat history is kept in the current server session only. Profile and remembered facts are stored locally on the host and reused by both the Discord Activity and Telegram bot when they use the same memory path.</p>
         </div>
         <section class="memory-panel"><div class="subsection-head"><strong>Persistent memory</strong><span class="pill">SHARED WITH TELEGRAM BOT</span></div>
           <form id="memory-profile-form" class="memory-form"><label for="memory-profile">User profile</label><textarea id="memory-profile" rows="4" maxlength="4000" placeholder="A short profile for future AI conversations"></textarea><button class="action-button" type="submit">Save profile</button></form>
