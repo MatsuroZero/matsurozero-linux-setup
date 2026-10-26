@@ -6,6 +6,10 @@ from gemini_provider import GeminiProvider, GeminiProviderError, model_display_n
 
 
 class GeminiProviderTests(unittest.IsolatedAsyncioTestCase):
+    def test_base_url_preserves_openai_api_path(self):
+        provider = GeminiProvider("test-key")
+        self.assertEqual(provider.base_url, "https://generativelanguage.googleapis.com/v1beta/openai/")
+
     async def test_requires_api_key(self):
         with self.assertRaises(GeminiProviderError):
             GeminiProvider("")
