@@ -30,7 +30,7 @@ A private Discord Activity web app for monitoring a Linux host and safely managi
 
 ### Optional systemd user service template
 
-The repository includes `deploy/discord-control-activity.service.example`. Edit its `WorkingDirectory` to the actual clone path, create `~/.config/discord-control-activity/env` with mode `600`, then install the unit under `~/.config/systemd/user/`. The template is a starting point and requires a deployment review, especially if the host needs system-level service control or Docker access.
+The repository includes `deploy/discord-control-activity.service.example`. Edit its `WorkingDirectory` to the actual clone path, create `~/.config/discord-control-activity/env` with mode `600`, then install the unit under `~/.config/systemd/user/`. The template is a starting point and requires a deployment review, especially if the host needs system-level service control or Docker access. It grants write access to the default shared memory directory; if `OLLAMA_MEMORY_PATH` points elsewhere, add that directory to `ReadWritePaths` too.
 
 
 
