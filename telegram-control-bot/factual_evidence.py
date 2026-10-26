@@ -64,7 +64,9 @@ def should_retrieve_factual_evidence(question):
 
     return bool(re.match(
         r"^(?:what|who|where|when|which|why|how)\b|"
-        r"^(?:define|explain|tell me about|give me facts about)\b|"
+        r"^(?:define|explain|tell me about|give me facts about|"
+        r"can you tell me|could you tell me|please tell me|"
+        r"can you explain|could you explain|provide me|give me)\b|"
         r"^is\s+(?:an?\s+|the\s+)?[\w-]+\b",
         lowered,
     ))
@@ -107,6 +109,23 @@ def format_time_sensitive_unavailable_prompt():
         "you browsed successfully."
     )
 
+def _retrieval_query(question):
+    """Strip conversational framing and source-request tails before web search."""
+    text = " ".join(str(question or "").split()).strip()
+    text = re.sub(
+        r"^(?:can|could|would) you (?:please )?(?:tell me|explain|give me)\s+",
+        "", text, flags=re.I,
+    )
+    text = re.sub(r"^please tell me\s+", "", text, flags=re.I)
+    text = re.sub(
+        r"\s*(?:,|\band\b)?\s*(?:and\s+)?(?:provide|give|find|include|cite)\s+"
+        r"(?:me\s+)?(?:some\s+)?(?:(?:great|good|reliable|credible|academic|official)\s+)?"
+        r"(?:sources|references|citations|links)\b.*$",
+        "", text, flags=re.I,
+    )
+    return text.strip(" ,.;:!?")[:MAX_QUESTION_CHARS] or " ".join(str(question or "").split())[:MAX_QUESTION_CHARS]
+
+
 def _clean_excerpt(value):
     value = re.sub(r"<[^>]*>", " ", str(value or ""))
     return " ".join(html.unescape(value).split())[:MAX_EXTRACT_CHARS]
@@ -130,7 +149,7 @@ async def retrieve_wikipedia_evidence(question):
                 params={
                     "action": "query",
                     "generator": "search",
-                    "gsrsearch": " ".join(str(question).split())[:MAX_QUESTION_CHARS],
+                    "gsrsearch": _retrieval_query(question),
                     "gsrnamespace": 0,
                     "gsrlimit": 3,
                     "prop": "extracts",
@@ -829,7 +848,7 @@ async def retrieve_stackexchange_evidence(question):
                 "https://api.stackexchange.com/2.3/search/advanced",
                 params={
                     "order": "desc", "sort": "relevance",
-                    "q": " ".join(str(question).split())[:MAX_QUESTION_CHARS],
+                    "q": _retrieval_query(question),
                     "site": "stackoverflow", "pagesize": 3,
                     "filter": "default",
                 },
@@ -946,7 +965,7 @@ async def _retrieve_multi_source_evidence_uncached(question):
     if not sources:
         return None
 
-    question_terms = _content_tokens(question)
+    question_terms = _content_tokens(_retrieval_query(question))
     ranked_sources = []
     for index, item in enumerate(sources):
         score = _evidence_relevance_score(
