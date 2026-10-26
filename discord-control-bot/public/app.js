@@ -1,4 +1,4 @@
-import { DiscordSDK } from "https://cdn.jsdelivr.net/npm/@discord/embedded-app-sdk@1.3.0/+esm";
+import { DiscordSDK } from "https://cdn.jsdelivr.net/npm/@discord/embedded-app-sdk@2.5.0/+esm";
 
 const $ = (selector) => document.querySelector(selector);
 const alertBox = $("#alert");
