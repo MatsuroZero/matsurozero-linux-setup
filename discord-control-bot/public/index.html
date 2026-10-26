@@ -27,6 +27,14 @@
         <div id="alert" class="alert" role="status">Connecting to Discord…</div>
         <section class="section-head"><div><h3>Control modules</h3><p>Connected to your private workspace</p></div><span class="pill">OWNER ACCESS ONLY</span></section>
         <div id="cards" class="cards"></div>
+        <section class="section-head metrics-heading"><div><h3>Live system snapshot</h3><p id="sampled-at">Waiting for an authorized session</p></div><span class="pill">READ ONLY</span></section>
+        <div id="metrics" class="metrics">
+          <article class="metric"><span>CPU USAGE</span><strong id="cpu-value">--</strong><small id="cpu-detail">Waiting for data</small><div class="meter"><i id="cpu-meter"></i></div></article>
+          <article class="metric"><span>MEMORY</span><strong id="memory-value">--</strong><small id="memory-detail">Waiting for data</small><div class="meter"><i id="memory-meter"></i></div></article>
+          <article class="metric"><span>ROOT STORAGE</span><strong id="disk-value">--</strong><small id="disk-detail">Waiting for data</small><div class="meter"><i id="disk-meter"></i></div></article>
+          <article class="metric"><span>UPTIME</span><strong id="uptime-value">--</strong><small id="host-detail">Waiting for data</small></article>
+        </div>
+        <section class="process-panel"><div class="section-head"><div><h3>Top processes</h3><p>Read-only snapshot from the host</p></div></div><div id="processes" class="processes"><p class="muted">Waiting for data</p></div></section>
         <section class="bridge-panel"><div class="bridge-icon">⌁</div><div class="bridge-copy"><span class="eyebrow">LOCAL BRIDGE</span><h3 id="bridge-title">Waiting for your CachyOS machine</h3><p id="bridge-detail">The Activity shell is online. The authenticated local bridge is the next integration step, so no system-changing controls are enabled yet.</p></div><span class="status-chip"><span class="pulse"></span> NOT CONNECTED</span></section>
         <footer><span>NEXUS CONTROL <b>·</b> PRIVATE BUILD</span><button id="logout" class="quiet-button">End session ↗</button></footer>
       </div>
