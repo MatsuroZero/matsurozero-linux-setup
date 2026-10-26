@@ -27,6 +27,16 @@ A private Discord Activity web app for monitoring a Linux host and safely managi
 - Add `https://127.0.0.1` as the OAuth redirect URI in the Developer Portal, following the official Activity guide.
 - Configure user installation and DM/private-channel contexts. Discord's default Activity Launch entry point is expected to launch the Activity, but DM launch still needs a real client-side verification.
 
+## Install the user service
+
+From the repository's `discord-control-bot` directory, run:
+
+```bash
+bash deploy/install-user-service.sh
+```
+
+The installer creates a private environment file and installs a systemd user unit template. Edit `~/.config/discord-control-activity/env` before starting the service. Set a private `LINKS_PIN` of at least six characters; the sample value is only a placeholder. The installer deliberately does not start the app until you configure the Discord application ID and client secret.
+
 ## Run locally
 
 ### Optional systemd user service template
