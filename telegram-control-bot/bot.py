@@ -6,10 +6,13 @@ import logging
 import httpx
 from factual_evidence import (
     assess_answer_support,
-    format_evidence_for_prompt,
-    format_source_attribution,
+    assess_claim_level_support,
+    format_multi_source_attribution,
+    format_multi_source_evidence_for_prompt,
     format_support_warning,
-    retrieve_wikipedia_evidence,
+    format_time_sensitive_unavailable_prompt,
+    is_time_sensitive_question,
+    retrieve_multi_source_evidence,
 )
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Thread
@@ -943,6 +946,34 @@ async def _extract_after_previous(previous_task, key, session, user_text):
     await _extract_temporary_facts(key, session, user_text)
 
 
+def _bounded_chat_history(history, max_prior_messages=4, max_prior_chars=2400, max_message_chars=900):
+    """Keep the newest turn intact while bounding old context for CPU-friendly prefill.
+
+    Long current user messages remain intact. Older turns are useful for continuity,
+    but retaining huge pasted code or logs across turns needlessly slows every reply.
+    """
+    messages = [item for item in history if isinstance(item, dict)]
+    if not messages:
+        return []
+    latest = dict(messages[-1])
+    prior = messages[:-1][-max_prior_messages:]
+    bounded_prior = []
+    remaining = max_prior_chars
+    for item in reversed(prior):
+        content = str(item.get("content") or "")
+        if remaining <= 0:
+            break
+        limit = min(max_message_chars, remaining)
+        if len(content) > limit:
+            content = content[-limit:]
+        if not content.strip():
+            continue
+        bounded_prior.append({"role": item.get("role", "user"), "content": content})
+        remaining -= len(content)
+    bounded_prior.reverse()
+    return bounded_prior + [latest]
+
+
 def _deduplicate_answer_text(text):
     """Remove exact repeated long lines while preserving bullets and paragraph layout."""
     text = str(text or "").strip()
@@ -1365,7 +1396,9 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
     history.append({"role": "user", "content": user_text})
     # Keep recent turns only. The profile/memory supplies durable context, while
     # a compact transcript reduces prompt processing on this CPU-limited host.
-    history = history[-8:]
+    # Keep the latest user message intact, but bound old turns. Carrying large
+    # pasted logs/code forward into every prompt makes CPU-only generation slower.
+    history = _bounded_chat_history(history)
 
     thinking_message = None
     try:
@@ -1402,10 +1435,15 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         # Retrieve a small external excerpt only for objective factual questions.
         # The helper excludes personal-memory, current-events, creative, and math queries.
         # Retrieval failure is non-fatal and never prevents a normal Ollama answer.
-        evidence = await retrieve_wikipedia_evidence(user_text)
-        evidence_prompt = format_evidence_for_prompt(evidence)
+        evidence_started = time.perf_counter()
+        evidence = await retrieve_multi_source_evidence(user_text)
+        log.debug('Evidence retrieval stage took %.3fs', time.perf_counter() - evidence_started)
+        evidence_prompt = format_multi_source_evidence_for_prompt(evidence, question=user_text)
         if evidence_prompt:
             system_prompt += "\n\n" + evidence_prompt
+        elif is_time_sensitive_question(user_text):
+            # Without a live source, current facts must be explicitly unverified.
+            system_prompt += "\n\n" + format_time_sensitive_unavailable_prompt()
         if arithmetic_result is not None:
             system_prompt += (
                 "\n\nVERIFIED CALCULATION: A deterministic arithmetic evaluator calculated "
@@ -1413,6 +1451,7 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
                 "Include this exact result, and also answer every other part of the user's message. "
                 "Do not recalculate it or ignore the non-math content."
             )
+        generation_started = time.perf_counter()
         async with httpx.AsyncClient(
             timeout=httpx.Timeout(OLLAMA_TIMEOUT, connect=5.0)
         ) as client:
@@ -1425,8 +1464,12 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
                     "keep_alive": "10m",
                     "think": False,
                     "options": {
+                        # Keep output bounded for the CPU-only i3-class host.
+                        # Fewer generated tokens mean shorter wait times on local models.
                         "num_ctx": 2048,
-                        "num_predict": 220,
+                        # Cap routine replies to reduce CPU-only generation latency.
+                        # Ask follow-up questions for additional detail when needed.
+                        "num_predict": 128,
                         "temperature": 0.58,
                         "top_p": 0.85,
                         "top_k": 30,
@@ -1437,21 +1480,45 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             )
             response.raise_for_status()
             payload = response.json()
+        generation_wall_seconds = time.perf_counter() - generation_started
+        # Ollama reports nanosecond timings and token counts. Record them so
+        # performance tuning is based on this PC's real throughput, not guesses.
+        eval_count = payload.get("eval_count", 0) or 0
+        eval_duration = payload.get("eval_duration", 0) or 0
+        prompt_eval_count = payload.get("prompt_eval_count", 0) or 0
+        prompt_eval_duration = payload.get("prompt_eval_duration", 0) or 0
+        load_duration = payload.get("load_duration", 0) or 0
+        tokens_per_second = (
+            eval_count * 1_000_000_000 / eval_duration
+            if eval_duration > 0 else 0.0
+        )
+        log.info(
+            "Ollama performance model=%s wall=%.2fs load=%.2fs "
+            "prompt_eval=%.2fs/%s tokens generation=%.2fs/%s tokens (%.2f tok/s)",
+            session["model"],
+            generation_wall_seconds,
+            load_duration / 1_000_000_000,
+            prompt_eval_duration / 1_000_000_000,
+            prompt_eval_count,
+            eval_duration / 1_000_000_000,
+            eval_count,
+            tokens_per_second,
+        )
         answer = payload.get("message", {}).get("content", "").strip()
         if not answer:
             raise RuntimeError("Ollama returned no response text.")
         # Small models sometimes echo a sentence or paragraph inside one answer.
         answer = _deduplicate_answer_text(answer)
         if evidence_prompt:
-            support = assess_answer_support(user_text, answer, evidence)
+            support = assess_claim_level_support(user_text, answer, evidence)
             if support["status"] == "candidate_supported":
-                answer += format_source_attribution(evidence)
+                answer += format_multi_source_attribution(evidence)
             else:
                 # This is only a lexical overlap check, not proof of correctness.
                 # Be transparent when the generated answer doesn't visibly match
                 # the retrieved extract instead of presenting the source as support.
-                answer += format_support_warning()
-                answer += format_source_attribution(evidence)
+                answer += format_support_warning(support)
+                answer += format_multi_source_attribution(evidence)
         if CHAT_SESSIONS.get(key) is not session:
             return
 
