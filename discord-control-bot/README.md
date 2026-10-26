@@ -9,7 +9,8 @@ A private Discord Activity web app scaffold for the Linux control system. The da
 - Discord OAuth authorization-code exchange on the server and SDK authentication in the Activity.
 - Server-side allowlist validation against `DISCORD_ALLOWED_USER_ID`; privileged API routes re-check the session identity.
 - Unit tests for allowlist behavior and HTTP boundary behavior.
-- No arbitrary shell execution endpoint. System-changing controls remain disabled until the local bridge exists.
+- Live read-only host metrics: CPU usage sampled over a short interval, memory, root filesystem usage, uptime, network interfaces, and top processes.
+- No arbitrary shell execution endpoint. Service, Docker, power, and AI actions remain disabled until the shared control layer is implemented.
 
 ## Requirements
 
@@ -42,7 +43,7 @@ This simple server does not load `.env` automatically. Export variables in the s
 - The bot token previously pasted into chat must be regenerated before use. Do not put it in the browser.
 - Rotate any still-active credentials that were hard-coded in historical repositories.
 - Keep `.env` untracked and never commit client secrets or bridge secrets.
-- The current bridge is intentionally absent. Do not expose unrestricted shell execution or a privileged machine API to the public internet.
+- The current API reports metrics for the machine running the Node server. To monitor your CachyOS PC, run the server on that PC. Do not expose unrestricted shell execution or a privileged machine API to the public internet.
 
 ## Official references
 
