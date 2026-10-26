@@ -3,6 +3,7 @@ import { DiscordSDK } from "https://cdn.jsdelivr.net/npm/@discord/embedded-app-s
 const $ = (selector) => document.querySelector(selector);
 const alertBox = $("#alert");
 let appId = "";
+let modelCatalog = null;
 const moduleInfo = {
   overview: ["Overview", "◈"], system: ["System monitor", "⌁"], services: ["Services", "◉"],
   containers: ["Containers", "▦"], network: ["Network", "⌘"], assistant: ["AI assistant", "✳"]
@@ -62,6 +63,64 @@ function renderContainers(data) {
     finally { button.disabled = false; }
   }));
 }
+function populateAiModels() {
+  const provider = $("#ai-provider").value;
+  const info = modelCatalog?.providers?.[provider];
+  const models = info?.models || [];
+  $("#ai-model").innerHTML = "";
+  if (!models.length) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = info?.available ? "No models found" : (provider === "ollama" ? "Ollama unavailable" : "Gemini not configured");
+    $("#ai-model").append(option);
+    $("#ai-model").disabled = true;
+    $("#chat-send").disabled = true;
+    return;
+  }
+  for (const model of models) {
+    const option = document.createElement("option");
+    option.value = model;
+    option.textContent = model;
+    $("#ai-model").append(option);
+  }
+  $("#ai-model").disabled = false;
+  $("#chat-send").disabled = false;
+}
+function appendChatMessage(role, text) {
+  const empty = document.querySelector(".chat-empty");
+  if (empty) empty.remove();
+  const item = document.createElement("article");
+  item.className = `chat-message chat-${role}`;
+  const label = document.createElement("span");
+  label.textContent = role === "user" ? "YOU" : role === "assistant" ? "NEXUS" : "STATUS";
+  const body = document.createElement("p");
+  body.textContent = text;
+  item.append(label, body);
+  $("#chat-messages").append(item);
+  $("#chat-messages").scrollTop = $("#chat-messages").scrollHeight;
+  return body;
+}
+$("#ai-provider").addEventListener("change", populateAiModels);
+$("#chat-form").addEventListener("submit", async event => {
+  event.preventDefault();
+  const message = $("#chat-input").value.trim();
+  const provider = $("#ai-provider").value;
+  const model = $("#ai-model").value;
+  if (!message || !model) return;
+  appendChatMessage("user", message);
+  $("#chat-input").value = "";
+  $("#chat-send").disabled = true;
+  const pending = appendChatMessage("status", "Thinking…");
+  try {
+    const result = await api("/api/ai/chat", { method: "POST", body: JSON.stringify({ provider, model, message }) });
+    pending.parentElement.remove();
+    appendChatMessage("assistant", result.answer);
+  } catch (error) {
+    pending.textContent = error.message || "The AI request failed.";
+  } finally {
+    $("#chat-send").disabled = !$("#ai-model").value;
+  }
+});
 function selectView(view) {
   const info = moduleInfo[view] || moduleInfo.overview;
   $("#page-title").textContent = info[0];
@@ -108,7 +167,9 @@ async function start() {
     const overview = await api("/api/overview");
     drawCards(overview.sections);
     selectView("overview");
-    const [system, serviceData, containerData] = await Promise.all([api("/api/system"), api("/api/services"), api("/api/containers")]);
+    const [system, serviceData, containerData, models] = await Promise.all([api("/api/system"), api("/api/services"), api("/api/containers"), api("/api/ai/models")]);
+    modelCatalog = models;
+    populateAiModels();
     $("#cpu-value").textContent = `${system.cpu.usagePercent}%`;
     $("#cpu-detail").textContent = `${system.cpu.cores} logical cores · load ${system.cpu.loadAverage.join(" / ")}`;
     $("#cpu-meter").style.width = `${system.cpu.usagePercent}%`;
