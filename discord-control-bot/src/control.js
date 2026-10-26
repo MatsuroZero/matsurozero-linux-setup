@@ -73,7 +73,7 @@ async function getTopProcesses() {
 async function getTemperatureSnapshot() {
   try {
     const entries = await readdir("/sys/class/thermal");
-    const zones = entries.filter(name => /^thermal_zone\\d+$/.test(name)).slice(0, 32);
+    const zones = entries.filter(name => /^thermal_zone\d+$/.test(name)).slice(0, 32);
     const sensors = (await Promise.all(zones.map(async zone => {
       try {
         const [type, raw] = await Promise.all([
@@ -94,11 +94,11 @@ async function getTemperatureSnapshot() {
 async function readNetworkCounters() {
   const raw = await readFile("/proc/net/dev", "utf8");
   const counters = new Map();
-  for (const line of raw.split("\\n").slice(2)) {
+  for (const line of raw.split("\n").slice(2)) {
     const split = line.split(":");
     if (split.length !== 2) continue;
     const name = split[0].trim();
-    const values = split[1].trim().split(/\\s+/).map(Number);
+    const values = split[1].trim().split(/\s+/).map(Number);
     if (name && values.length >= 9 && values.every(Number.isFinite)) {
       counters.set(name, { rxBytes: values[0], txBytes: values[8] });
     }
