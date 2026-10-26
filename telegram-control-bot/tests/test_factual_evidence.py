@@ -159,6 +159,39 @@ class MultiSourceRelevanceTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(result)
 
 
+class SourceUrlValidationTests(unittest.TestCase):
+    def test_exact_allowlisted_https_hosts_are_accepted(self):
+        for url in (
+            "https://en.wikipedia.org/?curid=123",
+            "https://stackoverflow.com/a/123",
+            "https://stackoverflow.com:443/a/123",
+        ):
+            with self.subTest(url=url):
+                self.assertTrue(factual_evidence._is_allowed_source_url(url))
+
+    def test_spoofed_hosts_credentials_and_nonstandard_ports_are_rejected(self):
+        for url in (
+            "http://en.wikipedia.org/?curid=123",
+            "https://en.wikipedia.org.evil.example/?curid=123",
+            "https://en.wikipedia.org@evil.example/?curid=123",
+            "https://evil.example@stackoverflow.com:444/a/123",
+            "https://stackoverflow.com:444/a/123",
+            "https://stackoverflow.com:invalid/a/123",
+        ):
+            with self.subTest(url=url):
+                self.assertFalse(factual_evidence._is_allowed_source_url(url))
+
+    def test_untrusted_url_is_excluded_from_prompt_and_attribution(self):
+        evidence = {
+            "title": "Spoofed page",
+            "excerpt": "This text must not be used as trusted evidence.",
+            "url": "https://en.wikipedia.org.evil.example/?curid=123",
+            "source": "Wikipedia",
+        }
+        self.assertEqual(factual_evidence._trusted_evidence_records(evidence), [])
+        self.assertEqual(factual_evidence.format_multi_source_attribution(evidence), "")
+
+
 class EvidenceFormattingTests(unittest.TestCase):
     def test_prompt_formats_excerpt_as_untrusted_candidate_evidence(self):
         prompt = factual_evidence.format_evidence_for_prompt({
