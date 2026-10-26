@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { getSystemSnapshot, getServiceSnapshot, getContainerSnapshot } from "../src/control.js";
+import { getSystemSnapshot, getServiceSnapshot, getContainerSnapshot, getNetworkSnapshot } from "../src/control.js";
 
 test("system snapshot returns bounded, typed read-only metrics", async () => {
   const snapshot = await getSystemSnapshot();
@@ -35,4 +35,15 @@ test("control action validators reject unknown targets and unsupported actions",
   assert.throws(() => validateServiceAction("docker", "exec"), error => error.status === 400);
   assert.throws(() => validateContainerAction("name; arbitrary command", "start"), error => error.status === 400);
   assert.throws(() => validateContainerAction("valid-name", "exec"), error => error.status === 400);
+});
+
+test("thermal and network snapshots expose bounded structured data", async () => {
+  const system = await getSystemSnapshot();
+  assert.equal(typeof system.temperatures.available, "boolean");
+  assert.ok(Array.isArray(system.temperatures.sensors));
+  assert.ok(system.temperatures.sensors.length <= 32);
+  const network = await getNetworkSnapshot(100);
+  assert.equal(typeof network.available, "boolean");
+  assert.ok(Array.isArray(network.interfaces));
+  assert.ok(network.interfaces.every(item => typeof item.name === "string" && typeof item.rxBytesPerSecond === "number" && typeof item.txBytesPerSecond === "number"));
 });
