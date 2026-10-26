@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { getSystemSnapshot, getServiceSnapshot, getContainerSnapshot, getNetworkSnapshot } from "../src/control.js";
+import { getSystemSnapshot, getServiceSnapshot, getContainerSnapshot, getNetworkSnapshot, getProjectSnapshot, validateProjectAction } from "../src/control.js";
 
 test("system snapshot returns bounded, typed read-only metrics", async () => {
   const snapshot = await getSystemSnapshot();
@@ -46,4 +46,16 @@ test("thermal and network snapshots expose bounded structured data", async () =>
   assert.equal(typeof network.available, "boolean");
   assert.ok(Array.isArray(network.interfaces));
   assert.ok(network.interfaces.every(item => typeof item.name === "string" && typeof item.rxBytesPerSecond === "number" && typeof item.txBytesPerSecond === "number"));
+});
+
+test("Docker project actions accept only known project names and verbs", () => {
+  assert.equal(validateProjectAction("odysseus", "start").action, "start");
+  assert.throws(() => validateProjectAction("arbitrary-path", "start"), error => error.status === 400);
+  assert.throws(() => validateProjectAction("odysseus", "exec"), error => error.status === 400);
+});
+
+test("Docker project inventory is bounded and reports availability", async () => {
+  const projects = await getProjectSnapshot();
+  assert.deepEqual(projects.map(project => project.id), ["odysseus", "uptime-kuma", "localnexus"]);
+  assert.ok(projects.every(project => typeof project.available === "boolean" && Array.isArray(project.containers)));
 });
