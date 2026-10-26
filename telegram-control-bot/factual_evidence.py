@@ -483,6 +483,45 @@ def assess_answer_support(question, answer, evidence):
         extras = evidence.get("additional_sources", [])
         if isinstance(extras, list):
             records.extend(item for item in extras if isinstance(item, dict))
+    # Do not let separate sources collectively "launder" an unsupported claim.
+    # Each complete answer must have support within one record; otherwise a
+    # capital fact in source A plus an unrelated number in source B could appear
+    # to support a compound claim neither source actually states.
+    if len(records) > 1:
+        per_source_results = [
+            assess_answer_support(
+                question,
+                answer_text,
+                {
+                    "title": str(item.get("title") or ""),
+                    "excerpt": str(item.get("excerpt") or ""),
+                    **({"url": item["url"]} if item.get("url") else {}),
+                    **({"source": item["source"]} if item.get("source") else {}),
+                },
+            )
+            for item in records
+            if isinstance(item, dict)
+        ]
+        supported_result = next(
+            (
+                result for result in per_source_results
+                if result.get("status") == "candidate_supported"
+            ),
+            None,
+        )
+        if supported_result is not None:
+            return supported_result
+        # Preserve useful failure diagnostics while never merging evidence terms.
+        if per_source_results:
+            return max(
+                per_source_results,
+                key=lambda result: (
+                    bool(result.get("unsupported_numbers")),
+                    bool(result.get("unsupported_named_entities")),
+                    float(result.get("overlap", 0.0)),
+                ),
+            )
+
     evidence_text = " ".join(
         str(item.get("title") or "") + " " + str(item.get("excerpt") or "")
         for item in records if isinstance(item, dict)
