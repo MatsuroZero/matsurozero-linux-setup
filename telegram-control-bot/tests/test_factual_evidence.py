@@ -1373,6 +1373,45 @@ class CompoundNumberNormalizationTests(unittest.TestCase):
         }
         self.assertEqual(factual_evidence.detect_evidence_conflicts(evidence), [])
 
+class RequestedMetricRelationTests(unittest.TestCase):
+    def test_diameter_number_cannot_be_relabelled_as_moon_count(self):
+        evidence = {
+            "title": "Jupiter",
+            "excerpt": "Jupiter has a diameter of 139820 km. Jupiter has 95 moons.",
+        }
+        result = factual_evidence.assess_answer_support(
+            "How many moons does Jupiter have?",
+            "Jupiter has 139820 moons.",
+            evidence,
+        )
+        self.assertEqual(result["status"], "insufficient_overlap")
+        self.assertEqual(result.get("reason"), "requested_metric_value_mismatch")
+
+    def test_correct_count_is_not_rejected_when_other_numbers_are_present(self):
+        evidence = {
+            "title": "Jupiter",
+            "excerpt": "Jupiter has a diameter of 139820 km. Jupiter has 95 moons.",
+        }
+        result = factual_evidence.assess_answer_support(
+            "How many moons does Jupiter have?",
+            "Jupiter has 95 moons.",
+            evidence,
+        )
+        self.assertEqual(result["status"], "candidate_supported")
+
+    def test_compound_answer_may_include_supported_other_property(self):
+        evidence = {
+            "title": "Jupiter",
+            "excerpt": "Jupiter has a diameter of 139820 km. Jupiter has 95 moons.",
+        }
+        result = factual_evidence.assess_answer_support(
+            "How many moons does Jupiter have?",
+            "Jupiter has 95 moons and a diameter of 139820 km.",
+            evidence,
+        )
+        self.assertEqual(result["status"], "candidate_supported")
+
+
 class NumericFalsePositiveTests(unittest.TestCase):
     def test_ordinary_phrase_one_of_does_not_create_unsupported_number(self):
         evidence = {
