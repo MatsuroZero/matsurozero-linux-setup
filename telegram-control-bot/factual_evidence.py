@@ -898,11 +898,35 @@ def format_multi_source_evidence_for_prompt(evidence):
 
 
 def format_multi_source_attribution(evidence):
-    """List actual retrieved source URLs without implying independent verification."""
-    records = _trusted_evidence_records(evidence)
-    if not records:
+    """List safe source URLs even when an excerpt is unavailable."""
+    if not isinstance(evidence, dict):
         return ""
-    lines = ["\n\nPotential references (retrieved automatically; not independently verified):"]
-    for item in records:
-        lines.append("\n• " + item["source"] + " — " + item["title"] + "\n" + item["url"])
-    return "".join(lines)
+    candidates = [evidence]
+    extras = evidence.get("additional_sources", [])
+    if isinstance(extras, list):
+        candidates.extend(item for item in extras if isinstance(item, dict))
+    allowed_hosts = {"en.wikipedia.org", "stackoverflow.com"}
+    references = []
+    seen = set()
+    for item in candidates:
+        title = _clean_excerpt(item.get("title"))
+        url = str(item.get("url") or "").strip()
+        parsed = urlparse(url)
+        if (
+            not title or url in seen or parsed.scheme != "https"
+            or parsed.hostname not in allowed_hosts
+        ):
+            continue
+        source = str(item.get("source") or (
+            "Wikipedia" if parsed.hostname == "en.wikipedia.org" else "Stack Overflow"
+        ))
+        references.append("\\n• " + source + " — " + title + "\\n" + url)
+        seen.add(url)
+        if len(references) >= 3:
+            break
+    if not references:
+        return ""
+    return (
+        "\\n\\nPotential references (retrieved automatically; not independently verified):"
+        + "".join(references)
+    )
