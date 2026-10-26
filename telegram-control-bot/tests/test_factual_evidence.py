@@ -178,8 +178,8 @@ class MultiSourceRelevanceTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_numeric_question_rejects_relevant_passage_without_a_value(self):
         wikipedia = {
-            "title": "Water",
-            "excerpt": "Water boils at its boiling point under standard atmospheric pressure.",
+            "title": "Planet X",
+            "excerpt": "Planet X is a distant planet with several natural satellites.",
             "url": "https://en.wikipedia.org/?curid=444",
             "source": "Wikipedia article extract",
         }
@@ -189,14 +189,14 @@ class MultiSourceRelevanceTests(unittest.IsolatedAsyncioTestCase):
             factual_evidence, "retrieve_stackexchange_evidence", new=AsyncMock(return_value=[])
         ):
             result = await factual_evidence._retrieve_multi_source_evidence_uncached(
-                "At what temperature does water boil?"
+                "How many moons does Planet X have?"
             )
         self.assertIsNone(result)
 
     async def test_numeric_question_accepts_passage_with_answer_value(self):
         wikipedia = {
-            "title": "Water",
-            "excerpt": "Water boils at 100 °C at standard atmospheric pressure.",
+            "title": "Planet X",
+            "excerpt": "Planet X has twelve moons and is a distant planet.",
             "url": "https://en.wikipedia.org/?curid=445",
             "source": "Wikipedia article extract",
         }
