@@ -615,6 +615,24 @@ class EvidenceFormattingTests(unittest.TestCase):
         self.assertNotIn("incorrect", warning)
 
 
+class OutputFormattingRegressionTests(unittest.TestCase):
+    def test_support_warning_uses_real_line_breaks(self):
+        warning = factual_evidence.format_support_warning()
+        self.assertTrue(warning.startswith("\\n\\n"))
+        self.assertNotIn(r"\\n", warning)
+
+    def test_source_attribution_uses_real_line_breaks(self):
+        footer = factual_evidence.format_multi_source_attribution({
+            "title": "Canberra",
+            "excerpt": "Canberra is the capital of Australia.",
+            "url": "https://en.wikipedia.org/?curid=123",
+            "source": "Wikipedia article extract",
+        })
+        self.assertIn("\\n\\nPotential references", footer)
+        self.assertIn("\\n• Wikipedia article extract", footer)
+        self.assertNotIn(r"\\n", footer)
+
+
 class RetrievalFailureTests(unittest.IsolatedAsyncioTestCase):
     async def test_retrieval_uses_article_extracts_and_selects_top_ranked_page(self):
         class FakeResponse:
