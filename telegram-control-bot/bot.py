@@ -1437,7 +1437,9 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
                         # Keep output bounded for the CPU-only i3-class host.
                         # Fewer generated tokens mean shorter wait times on local models.
                         "num_ctx": 2048,
-                        "num_predict": 160,
+                        # Cap routine replies to reduce CPU-only generation latency.
+                        # Ask follow-up questions for additional detail when needed.
+                        "num_predict": 128,
                         "temperature": 0.58,
                         "top_p": 0.85,
                         "top_k": 30,
