@@ -7,7 +7,7 @@ let modelCatalog = null;
 let savedFacts = [];
 const moduleInfo = {
   overview: ["Overview", "◈"], system: ["System monitor", "⌁"], services: ["Services", "◉"],
-  containers: ["Containers", "▦"], network: ["Network", "⌘"], assistant: ["AI assistant", "✳"], links: ["Dashboards", "↗"], power: ["Power controls", "⏻"]
+  containers: ["Containers", "▦"], network: ["Network", "⌘"], assistant: ["AI assistant", "✳"], links: ["Dashboards", "↗"], registry: ["Nexus commands", "⌘"], power: ["Power controls", "⏻"]
 };
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
@@ -95,6 +95,33 @@ function renderContainers(data) {
       alert(`Requested ${action} for container ${containerId}.`, "ok");
       renderContainers(await api("/api/containers"));
     } catch (error) { alert(error.message, "error"); }
+    finally { button.disabled = false; }
+  }));
+}
+function renderRegistry(data) {
+  $("#registry-path").textContent = `Registry: ${data.path || "not found"}`;
+  $("#saved-commands").innerHTML = data.commands.length ? data.commands.map(item => `<div class="inventory-row"><div><strong>${escapeHtml(item.name)}</strong><small>Executable: ${escapeHtml(item.executable)}</small></div><button class="action-button" data-run-command="${escapeHtml(item.name)}">Run</button></div>`).join("") : '<p class="muted">No saved commands found in the Nexus registry.</p>';
+  $("#saved-profiles").innerHTML = data.profiles.length ? data.profiles.map(item => `<div class="inventory-row"><div><strong>${escapeHtml(item.name)}</strong><small>${item.steps} step(s)</small></div><button class="action-button" data-run-profile="${escapeHtml(item.name)}">Run profile</button></div>`).join("") : '<p class="muted">No saved profiles found in the Nexus registry.</p>';
+  document.querySelectorAll("[data-run-command]").forEach(button => button.addEventListener("click", async () => {
+    const name = button.dataset.runCommand;
+    if (!window.confirm(`Run saved Nexus command "${name}"? Review the command in your local Nexus registry first.`)) return;
+    button.disabled = true;
+    $("#registry-output").textContent = `Running ${name}…`;
+    try {
+      const result = await api("/api/commands/run", { method: "POST", body: JSON.stringify({ name }) });
+      $("#registry-output").textContent = result.output;
+    } catch (error) { $("#registry-output").textContent = error.message; }
+    finally { button.disabled = false; }
+  }));
+  document.querySelectorAll("[data-run-profile]").forEach(button => button.addEventListener("click", async () => {
+    const name = button.dataset.runProfile;
+    if (!window.confirm(`Run all steps in Nexus profile "${name}"? This can change services and execute saved commands.`)) return;
+    button.disabled = true;
+    $("#registry-output").textContent = `Running profile ${name}…`;
+    try {
+      const result = await api("/api/profiles/run", { method: "POST", body: JSON.stringify({ name }) });
+      $("#registry-output").textContent = result.results.map(item => `[${item.ok ? "OK" : "FAIL"}] ${item.label}\\n${item.output}`).join("\\n\\n");
+    } catch (error) { $("#registry-output").textContent = error.message; }
     finally { button.disabled = false; }
   }));
 }
@@ -241,6 +268,7 @@ function selectView(view) {
   else if (view === "containers") alert("Container actions are restricted to containers in the host inventory.");
   else if (view === "network") alert("Network interface details and sampled throughput are read-only.");
   else if (view === "links") alert("Dashboard URLs are local-network links. Credentials require the configured server PIN.");
+  else if (view === "registry") alert("Only pre-registered Nexus commands and profiles are available. Each run requires confirmation.");
   else if (view === "power") alert("Power actions affect the host and require explicit confirmation.");
   else alert("Choose an available Ollama or Gemini model. Chat history is kept for this server session.");
 }
@@ -276,12 +304,13 @@ async function start() {
     const overview = await api("/api/overview");
     drawCards(overview.sections);
     selectView("overview");
-    const [system, serviceData, containerData, projectData, models, network, memory, links] = await Promise.all([api("/api/system"), api("/api/services"), api("/api/containers"), api("/api/projects"), api("/api/ai/models"), api("/api/network"), api("/api/ai/memory").catch(() => ({ profile: "", facts: [] })), api("/api/links")]);
+    const [system, serviceData, containerData, projectData, models, network, memory, links, registry] = await Promise.all([api("/api/system"), api("/api/services"), api("/api/containers"), api("/api/projects"), api("/api/ai/models"), api("/api/network"), api("/api/ai/memory").catch(() => ({ profile: "", facts: [] })), api("/api/links"), api("/api/registry")]);
     modelCatalog = models;
     populateAiModels();
     $("#memory-profile").value = memory.profile || "";
     renderMemoryFacts(memory.facts || []);
     renderDashboards(links.dashboards || []);
+    renderRegistry(registry);
     $("#cpu-value").textContent = `${system.cpu.usagePercent}%`;
     $("#cpu-detail").textContent = `${system.cpu.cores} logical cores · load ${system.cpu.loadAverage.join(" / ")}`;
     $("#cpu-meter").style.width = `${system.cpu.usagePercent}%`;
