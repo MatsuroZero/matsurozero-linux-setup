@@ -312,3 +312,29 @@ export async function getContainerLogs(containerId, lines = 100) {
     throw Object.assign(new Error("Could not read container logs"), { status: 503 });
   }
 }
+
+const POWER_ACTIONS = new Map([
+  ["lock", ["lock", "Lock the active desktop session"]],
+  ["suspend", ["suspend", "Suspend the computer"]],
+  ["reboot", ["reboot", "Reboot the computer"]],
+  ["shutdown", ["poweroff", "Shut down the computer"]],
+]);
+export function validatePowerAction(action) {
+  if (typeof action !== "string" || !POWER_ACTIONS.has(action)) {
+    throw Object.assign(new Error("Unsupported power action"), { status: 400 });
+  }
+  return { action, commandArgs: POWER_ACTIONS.get(action) };
+}
+export async function performPowerAction(action) {
+  const request = validatePowerAction(action);
+  const executable = join(os.homedir(), ".local", "bin", "serpantinum");
+  try { await access(executable); }
+  catch { throw Object.assign(new Error("Serpantinum power command is unavailable on this host"), { status: 503 }); }
+  try {
+    await execFileAsync(executable, [request.commandArgs[0]], { timeout: 25_000, maxBuffer: 32 * 1024, windowsHide: true });
+    console.info(JSON.stringify({ event: "power_action", action, at: new Date().toISOString() }));
+    return { ok: true, action, description: request.commandArgs[1] };
+  } catch {
+    throw Object.assign(new Error("Power action failed. Check the user session and Serpantinum command availability."), { status: 503 });
+  }
+}
