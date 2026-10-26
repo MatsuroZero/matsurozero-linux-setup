@@ -4,7 +4,7 @@ import { randomBytes } from "node:crypto";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { assertAuthorizedDiscordUser } from "./authz.js";
-import { getSystemSnapshot, getServiceSnapshot, getContainerSnapshot } from "./control.js";
+import { getSystemSnapshot, getServiceSnapshot, getContainerSnapshot, performServiceAction, performContainerAction } from "./control.js";
 
 const ROOT = fileURLToPath(new URL("../public/", import.meta.url));
 const PORT = Number(process.env.PORT || 8787);
@@ -33,6 +33,11 @@ async function readJson(req, maxBytes = 16_384) {
   }
   try { return JSON.parse(data || "{}"); }
   catch { throw Object.assign(new Error("Invalid JSON"), { status: 400 }); }
+}
+function hasSameOrigin(req) {
+  const origin = req.headers.origin;
+  if (typeof origin !== "string" || typeof req.headers.host !== "string") return false;
+  try { return new URL(origin).host === req.headers.host; } catch { return false; }
 }
 function getSession(req) {
   const sid = cookieValue(req.headers.cookie, "nexus_sid");
@@ -77,6 +82,9 @@ export function createAppServer() {
       if (req.method === "GET" && url.pathname === "/api/health") {
         return send(res, 200, { ok: true, service: "discord-control-activity", hostMetrics: "available", controlActions: "disabled" });
       }
+      if (req.method === "POST" && ["/api/session", "/api/logout", "/api/services/action", "/api/containers/action"].includes(url.pathname) && !hasSameOrigin(req)) {
+        return send(res, 403, { error: "Cross-origin request rejected" });
+      }
       if (req.method === "POST" && url.pathname === "/api/session") {
         const { code } = await readJson(req);
         if (typeof code !== "string" || code.length < 1 || code.length > 2048) return send(res, 400, { error: "Invalid OAuth code" });
@@ -111,8 +119,20 @@ export function createAppServer() {
         if (req.method === "GET" && url.pathname === "/api/services") {
           return send(res, 200, { services: await getServiceSnapshot() });
         }
+        if (req.method === "POST" && url.pathname === "/api/services/action") {
+          const { serviceId, action } = await readJson(req, 4096);
+          const result = await performServiceAction(serviceId, action);
+          console.info(JSON.stringify({ event: "authorized_control", userId: session.userId, kind: "service", serviceId, action }));
+          return send(res, 200, result);
+        }
         if (req.method === "GET" && url.pathname === "/api/containers") {
           return send(res, 200, await getContainerSnapshot());
+        }
+        if (req.method === "POST" && url.pathname === "/api/containers/action") {
+          const { containerId, action } = await readJson(req, 4096);
+          const result = await performContainerAction(containerId, action);
+          console.info(JSON.stringify({ event: "authorized_control", userId: session.userId, kind: "container", containerId: result.containerId, action }));
+          return send(res, 200, result);
         }
         if (req.method === "GET" && url.pathname === "/api/overview") {
           return send(res, 200, {
