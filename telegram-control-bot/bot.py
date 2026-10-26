@@ -1893,40 +1893,19 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             answer = payload.get("message", {}).get("content", "").strip()
             done_reason = str(payload.get("done_reason") or "").casefold()
             hit_output_limit = done_reason in {"length", "max_tokens"} or (eval_count >= output_token_budget and eval_count > 0)
-        # Ollama reports nanosecond timings and token counts. Record them so
-        # performance tuning is based on this PC's real throughput, not guesses.
-        eval_count = payload.get("eval_count", 0) or 0
-        eval_duration = payload.get("eval_duration", 0) or 0
-        prompt_eval_count = payload.get("prompt_eval_count", 0) or 0
-        prompt_eval_duration = payload.get("prompt_eval_duration", 0) or 0
-        load_duration = payload.get("load_duration", 0) or 0
-        tokens_per_second = (
-            eval_count * 1_000_000_000 / eval_duration
-            if eval_duration > 0 else 0.0
-        )
         log.info(
             "AI performance provider=%s model=%s wall=%.2fs load=%.2fs "
             "prompt_eval=%.2fs/%s tokens generation=%.2fs/%s tokens (%.2f tok/s)",
-            session["model"],
-            generation_wall_seconds,
-            load_duration / 1_000_000_000,
-            prompt_eval_duration / 1_000_000_000,
-            prompt_eval_count,
-            eval_duration / 1_000_000_000,
-            eval_count,
-            tokens_per_second,
+            provider_name, session["model"], generation_wall_seconds,
+            load_duration / 1_000_000_000, prompt_eval_duration / 1_000_000_000,
+            prompt_eval_count, eval_duration / 1_000_000_000, eval_count, tokens_per_second,
         )
-        answer = payload.get("message", {}).get("content", "").strip()
         if not answer:
             raise RuntimeError("Selected AI provider returned no response text.")
-        done_reason = str(payload.get("done_reason") or "").casefold()
-        hit_output_limit = done_reason in {"length", "max_tokens"} or (
-            eval_count >= output_token_budget and eval_count > 0
-        )
         if hit_output_limit:
             log.warning(
-                "Ollama output may be truncated model=%s done_reason=%s eval_count=%s budget=%s",
-                session["model"], done_reason or "not-reported", eval_count, output_token_budget,
+                "AI output may be truncated provider=%s model=%s done_reason=%s budget=%s",
+                provider_name, session["model"], done_reason or "not-reported", output_token_budget,
             )
         # Small models sometimes echo a sentence or paragraph inside one answer.
         answer = _deduplicate_answer_text(answer)
@@ -3004,6 +2983,8 @@ def main():
     app.add_handler(CommandHandler("profile", ollama_profile_command))
     app.add_handler(CommandHandler("remember", ollama_remember_command))
     app.add_handler(CommandHandler("forget", ollama_forget_command))
+    app.add_handler(CallbackQueryHandler(chat_provider_callback, pattern=r"^chat:(?:gemini|local)$"))
+    app.add_handler(CallbackQueryHandler(gemini_model_selected, pattern=r"^gemini:model:"))
     app.add_handler(CallbackQueryHandler(chat_provider_callback, pattern=r"^chat:(?:gemini|local)$"))
     app.add_handler(CallbackQueryHandler(gemini_model_selected, pattern=r"^gemini:model:"))
     app.add_handler(CallbackQueryHandler(ollama_model_selected, pattern=r"^ollama:model:"))
