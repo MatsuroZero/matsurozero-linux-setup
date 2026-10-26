@@ -134,6 +134,16 @@ function appendChatMessage(role, text) {
   $("#chat-messages").scrollTop = $("#chat-messages").scrollHeight;
   return body;
 }
+document.querySelectorAll("[data-power-action]").forEach(button => button.addEventListener("click", async () => {
+  const action = button.dataset.powerAction;
+  if (!window.confirm(`Are you sure you want to ${action === "shutdown" ? "shut down" : action} the CachyOS computer? This can disconnect the Activity.`)) return;
+  button.disabled = true;
+  try {
+    const result = await api("/api/power/action", { method: "POST", body: JSON.stringify({ action }) });
+    alert(result.description + " requested.", "ok");
+  } catch (error) { alert(error.message, "error"); }
+  finally { button.disabled = false; }
+}));
 $("#ai-provider").addEventListener("change", populateAiModels);
 $("#chat-form").addEventListener("submit", async event => {
   event.preventDefault();
