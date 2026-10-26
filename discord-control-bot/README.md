@@ -11,7 +11,8 @@ A private Discord Activity web app for monitoring a Linux host and safely managi
 - Server-side allowlist validation against `DISCORD_ALLOWED_USER_ID`; every private API route re-checks the authenticated session identity.
 - Read-only system metrics: sampled CPU utilization, memory, root filesystem usage, uptime, thermal-zone readings when exposed by Linux, network interface names, sampled per-interface RX/TX throughput, and top processes.
 - Read-only inventory of known Nexus systemd services and Docker containers, including systemd autostart state.
-- Confirmed start/stop/restart and enable/disable-autostart actions for a fixed allowlist of services, plus fixed Docker Compose project and container controls. Mutations use server-side origin checks and per-user action cooldown. No arbitrary shell endpoint exists.
+- Confirmed start/stop/restart and enable/disable-autostart actions for a fixed allowlist of services, plus fixed Docker Compose project/container controls and bounded logs. Mutations use server-side origin checks and per-user action cooldown. No arbitrary shell endpoint exists.
+- Fixed Serpantinum lock, suspend, reboot, and shutdown actions, each guarded by an explicit UI confirmation and server-side allowlist.
 - Optional AI chat using Ollama on the Activity host or Gemini when `GEMINI_API_KEY` is configured. Model choices are constrained to the available Ollama tags and a fixed Gemini model allowlist; conversation history is session-only.
 - System service actions use `sudo -n` and fail closed unless the host has narrowly scoped sudo permissions. User service actions require a working user systemd session. Docker actions require Docker access for the server process.
 - Tests cover authorization, API boundaries, metric shape, inventory shape, and input validation.
@@ -45,14 +46,13 @@ To monitor your CachyOS PC, run this server on that PC. When run elsewhere, the 
 ## Still to implement
 
 1. Verify Activity launch in DMs/private channels on the actual Discord client and complete the Developer Portal URL mapping.
-2. Align the service registry and container/project workflows with all current Telegram bot and Nexus CLI capabilities.
-3. Integrate persistent memory/profile/remember/forget behavior from the existing Telegram bot, plus network throughput, temperature sensors, Docker logs/projects, and safe power controls.
-4. Extract common control logic so Telegram, Nexus CLI, and Discord share one implementation rather than drift.
-5. Automated GitHub Actions execution. The repository integration blocked adding a workflow file, so tests are committed but have not run in GitHub Actions yet.
+2. Finish parity gaps: persistent AI memory/profile/remember/forget, dashboard credential reveal with the existing PIN flow, and Nexus custom command/profile/doctor/health workflows.
+3. Extract common control logic so Telegram, Nexus CLI, and Discord share one implementation rather than drift.
+4. Verify the GitHub Actions run. The workflow exists on main and the build branch, but the connected GitHub run-list action only returns PR-triggered runs; no successful run is verified yet.
 
 ## Security
 
-- The Discord bot token previously pasted into chat must be regenerated before use. Never send it to the browser or commit it.
+- Keep the Discord bot token server-side only. Never send it to the browser or commit it.
 - Rotate any still-active credentials hard-coded in historical repositories.
 - Keep `.env` untracked and never commit client secrets or bridge secrets.
 - All service/container actions use fixed operation allowlists and argument arrays, not a shell. Review the sudoers configuration carefully; do not grant broad passwordless sudo.
