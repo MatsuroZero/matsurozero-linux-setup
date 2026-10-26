@@ -5,6 +5,7 @@ A private Discord Activity web app for monitoring a Linux host and safely managi
 ## Implemented
 
 - Responsive dark Activity dashboard with Overview, System, Services, Containers, Network, and AI Assistant panels.
+- Pinned Discord Embedded App SDK v2.5.0 browser import; the Activity initializes through the SDK rather than relying on a missing global.
 - Node.js HTTP server, health/config endpoints, Discord OAuth authorization-code exchange, Embedded App SDK authentication, and secure session cookie.
 - Server-side allowlist validation against `DISCORD_ALLOWED_USER_ID`; every private API route re-checks the authenticated session identity.
 - Read-only system metrics: sampled CPU utilization, memory, root filesystem usage, uptime, network interface names, and top processes.
