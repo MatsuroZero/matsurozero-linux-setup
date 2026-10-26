@@ -88,7 +88,7 @@ export function createAppServer() {
         return send(res, 200, { applicationId: APP_ID });
       }
       if (req.method === "GET" && url.pathname === "/api/health") {
-        return send(res, 200, { ok: true, service: "discord-control-activity", hostMetrics: "available", controlActions: "disabled" });
+        return send(res, 200, { ok: true, service: "discord-control-activity", hostMetrics: "available", controlActions: "allowlisted" });
       }
       if (req.method === "POST" && ["/api/session", "/api/logout", "/api/services/action", "/api/containers/action", "/api/ai/chat"].includes(url.pathname) && !hasSameOrigin(req)) {
         return send(res, 403, { error: "Cross-origin request rejected" });
@@ -157,7 +157,7 @@ export function createAppServer() {
         if (req.method === "GET" && url.pathname === "/api/overview") {
           return send(res, 200, {
             user: { id: session.userId, name: session.username },
-            machine: { state: "connected", detail: "Read-only metrics come from the host running this Activity. Service controls and AI actions are not enabled yet." },
+            machine: { state: "connected", detail: "Metrics are from the Activity host. Service and container actions use fixed allowlists; AI chat is available when a provider is configured." },
             sections: [
               { id: "system", title: "System", description: "CPU, memory, storage, temperature, uptime" },
               { id: "services", title: "Services", description: "Jellyfin, Docker, Ollama, LocalNexus and dashboards" },
