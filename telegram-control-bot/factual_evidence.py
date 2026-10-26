@@ -173,7 +173,7 @@ async def retrieve_wikipedia_evidence(question):
         score, _, page_id, title, excerpt = max(ranked, key=lambda item: (item[0], item[1]))
         # A search result with almost no question-specific overlap is more likely
         # to mislead a small model than to help. Abstain rather than pass it along.
-        if score < 0.12:
+        if not _evidence_matches_question(question_terms, title, excerpt):
             return None
         return {
             "title": title,
@@ -235,6 +235,24 @@ def _evidence_relevance_score(question_terms, title, excerpt):
     title_coverage = len(terms & title_terms) / len(terms)
     excerpt_coverage = len(terms & excerpt_terms) / len(terms)
     return 0.35 * title_coverage + 0.65 * excerpt_coverage
+
+
+def _evidence_matches_question(question_terms, title, excerpt, minimum_score=0.12):
+    """Reject candidates with only incidental overlap with a multi-term question.
+
+    This is a conservative lexical gate, not a semantic relevance judgment. Short
+    entity questions may have only one content term; longer questions need at least
+    two distinct question terms in the candidate title or excerpt.
+    """
+    terms = set(question_terms or ())
+    if not terms:
+        return False
+    candidate_terms = _content_tokens(title) | _content_tokens(excerpt)
+    minimum_shared = 1 if len(terms) <= 2 else 2
+    return (
+        len(terms & candidate_terms) >= minimum_shared
+        and _evidence_relevance_score(terms, title, excerpt) >= minimum_score
+    )
 
 
 def _content_tokens(text):
@@ -761,7 +779,9 @@ async def _retrieve_multi_source_evidence_uncached(question):
     relevant = [
         dict(item, relevance_score=round(score, 3))
         for score, _, item in ranked_sources[:3]
-        if score >= 0.12
+        if _evidence_matches_question(
+            question_terms, item.get("title", ""), item.get("excerpt", "")
+        )
     ]
     if not relevant:
         return None
