@@ -48,7 +48,7 @@ To monitor your CachyOS PC, run this server on that PC. When run elsewhere, the 
 ## Still to implement
 
 1. Verify Activity launch in DMs/private channels on the actual Discord client and complete the Developer Portal URL mapping.
-2. Finish parity gaps in Nexus health/doctor reports and Docker project autostart workflows.
+2. Finish parity gaps in Docker project autostart workflows and additional Nexus maintenance actions.
 3. Extract common control logic so Telegram, Nexus CLI, and Discord share one implementation rather than drift.
 4. Verify the GitHub Actions run. The workflow exists on main and the build branch, but the connected GitHub run-list action only returns PR-triggered runs; no successful run is verified yet.
 
