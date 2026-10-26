@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { getSystemSnapshot } from "../src/control.js";
+import { getSystemSnapshot, getServiceSnapshot, getContainerSnapshot } from "../src/control.js";
 
 test("system snapshot returns bounded, typed read-only metrics", async () => {
   const snapshot = await getSystemSnapshot();
@@ -12,4 +12,19 @@ test("system snapshot returns bounded, typed read-only metrics", async () => {
   assert.ok(Array.isArray(snapshot.networkInterfaces));
   assert.ok(Array.isArray(snapshot.topProcesses));
   assert.ok(snapshot.topProcesses.length <= 6);
+});
+
+test("service inventory uses a fixed allowlist", async () => {
+  const services = await getServiceSnapshot();
+  assert.ok(services.length >= 7);
+  assert.ok(services.every(service => typeof service.unit === "string" && typeof service.state === "string"));
+  assert.ok(services.every(service => !("command" in service)));
+});
+
+test("container inventory is read-only and bounded", async () => {
+  const result = await getContainerSnapshot();
+  assert.equal(typeof result.available, "boolean");
+  assert.ok(Array.isArray(result.containers));
+  assert.ok(result.containers.length <= 100);
+  assert.ok(result.containers.every(container => typeof container.id === "string" && typeof container.name === "string"));
 });
