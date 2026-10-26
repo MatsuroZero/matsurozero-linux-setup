@@ -77,8 +77,10 @@ async function start() {
     $("#host-detail").textContent = `${system.hostname} · ${system.platform}/${system.architecture}`;
     $("#sampled-at").textContent = `Sampled ${new Date(system.sampledAt).toLocaleTimeString()} · interfaces: ${system.networkInterfaces.join(", ") || "none"}`;
     $("#processes").innerHTML = system.topProcesses.length ? system.topProcesses.map(proc => `<div class="process-row"><strong title="${proc.name}">${proc.name} <span style="text-align:left">#${proc.pid}</span></strong><span>CPU ${proc.cpuPercent}%</span><span>RAM ${proc.memoryPercent}%</span></div>`).join("") : '<p class="muted">Process list unavailable</p>';
-    $("#bridge-title").textContent = overview.machine.state === "connected" ? "CachyOS bridge connected" : "Waiting for your CachyOS machine";
+    $("#bridge-title").textContent = overview.machine.state === "connected" ? "Host metrics connected" : "Waiting for the host";
     $("#bridge-detail").textContent = overview.machine.detail;
+    const statusChip = document.querySelector(".status-chip");
+    if (statusChip) { statusChip.innerHTML = '<span class="pulse"></span> READ ONLY'; statusChip.style.color = "var(--green)"; statusChip.style.borderColor = "#345b50"; }
     alert("Discord identity verified. Private dashboard ready.", "ok");
   } catch (error) {
     $("#user-state").textContent = "Session unavailable";
