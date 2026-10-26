@@ -10,6 +10,7 @@ A private Discord Activity web app for monitoring a Linux host and safely managi
 - Read-only system metrics: sampled CPU utilization, memory, root filesystem usage, uptime, network interface names, and top processes.
 - Read-only inventory of known Nexus systemd services and Docker containers.
 - Confirmed start/stop/restart actions for a fixed allowlist of services and containers, with server-side origin checks and per-user action cooldown. No arbitrary shell endpoint exists.
+- Optional AI chat using Ollama on the Activity host or Gemini when `GEMINI_API_KEY` is configured. Model choices are constrained to the available Ollama tags and a fixed Gemini model allowlist; conversation history is session-only.
 - System service actions use `sudo -n` and fail closed unless the host has narrowly scoped sudo permissions. User service actions require a working user systemd session. Docker actions require Docker access for the server process.
 - Tests cover authorization, API boundaries, metric shape, inventory shape, and input validation.
 
@@ -36,7 +37,7 @@ To monitor your CachyOS PC, run this server on that PC. When run elsewhere, the 
 
 1. Verify Activity launch in DMs/private channels on the actual Discord client and complete the Developer Portal URL mapping.
 2. Align the service registry and container/project workflows with all current Telegram bot and Nexus CLI capabilities.
-3. Add the shared AI provider/model/memory logic (Ollama/Gemini), network throughput, temperature sensors, Docker logs/projects, and safe power controls.
+3. Integrate persistent memory/profile/remember/forget behavior from the existing Telegram bot, plus network throughput, temperature sensors, Docker logs/projects, and safe power controls.
 4. Extract common control logic so Telegram, Nexus CLI, and Discord share one implementation rather than drift.
 5. Automated GitHub Actions execution. The repository integration blocked adding a workflow file, so tests are committed but have not run in GitHub Actions yet.
 
