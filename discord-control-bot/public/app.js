@@ -279,7 +279,7 @@ function selectView(view) {
   document.querySelectorAll("[data-panel]").forEach(panel => {
     panel.style.display = panel.dataset.panel === view ? "" : "none";
   });
-  if (view === "overview") alert("Host metrics are live. Service/container actions are allowlisted; AI chat works when a provider is configured. Power controls are pending.");
+  if (view === "overview") alert("Host metrics are live. Service/container actions are allowlisted; AI chat works when a provider is configured. Power controls require explicit confirmation.");
   else if (view === "system") alert("Live system metrics are read-only. Service and container controls are separate panels.");
   else if (view === "services") alert("Service actions are allowlisted and may require host permissions.");
   else if (view === "containers") alert("Container actions are restricted to containers in the host inventory.");
