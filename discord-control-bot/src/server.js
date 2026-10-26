@@ -4,7 +4,7 @@ import { randomBytes } from "node:crypto";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { assertAuthorizedDiscordUser } from "./authz.js";
-import { getSystemSnapshot, getServiceSnapshot, getContainerSnapshot, performServiceAction, performContainerAction } from "./control.js";
+import { getSystemSnapshot, getServiceSnapshot, getContainerSnapshot, getNetworkSnapshot, performServiceAction, performContainerAction } from "./control.js";
 import { chat, getModelCatalog } from "./ai.js";
 
 const ROOT = fileURLToPath(new URL("../public/", import.meta.url));
@@ -130,6 +130,9 @@ export function createAppServer() {
           session.history = result.history;
           console.info(JSON.stringify({ event: "ai_chat", userId: session.userId, provider, model, at: new Date().toISOString() }));
           return send(res, 200, { answer: result.answer });
+        }
+        if (req.method === "GET" && url.pathname === "/api/network") {
+          return send(res, 200, await getNetworkSnapshot());
         }
         if (req.method === "GET" && url.pathname === "/api/system") {
           return send(res, 200, await getSystemSnapshot());
