@@ -4,6 +4,7 @@ from fractions import Fraction
 import json
 import logging
 import httpx
+from gemini_provider import GeminiProvider, GeminiProviderError, model_display_name
 from factual_evidence import (
     assess_answer_support,
     assess_claim_level_support,
@@ -75,6 +76,9 @@ OLLAMA_MEMORY_PATH = Path(os.getenv(
 ))
 CHAT_SESSIONS = {}
 FACT_EXTRACTION_MODEL = os.getenv("OLLAMA_MEMORY_MODEL", "qwen3:0.6b").strip() or "qwen3:0.6b"
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
+GEMINI_BASE_URL = os.getenv("GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai").rstrip("/")
+GEMINI_TIMEOUT = max(20.0, float(os.getenv("GEMINI_TIMEOUT", "90")))
 
 logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
@@ -1122,36 +1126,147 @@ async def ollama_chat_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await guard(update):
         return
     key = _chat_key(update)
-    if key in CHAT_SESSIONS:
-        await update.effective_message.reply_text("Ollama chat is already active. Use /bye to end it.")
+    args = list(context.args or [])
+    if args and args[0].casefold() == "status":
+        session = CHAT_SESSIONS.get(key)
+        if session:
+            await update.effective_message.reply_text(
+                f"AI chat active. Provider: {session.get('provider', 'ollama')}; model: {session['model']}."
+            )
+        else:
+            await update.effective_message.reply_text("No active AI chat.")
         return
-
-    status = await update.effective_message.reply_text("🦙 Starting/checking Ollama and loading installed models…")
+    if key in CHAT_SESSIONS:
+        await update.effective_message.reply_text("AI chat is already active. Use /bye to end it.")
+        return
+    if args and args[0].casefold() != "refresh":
+        target = " ".join(args).strip()
+        provider_name = "gemini" if target.casefold().startswith("gemini-") else "ollama"
+        try:
+            if provider_name == "gemini":
+                models = await _gemini_models()
+            else:
+                await _ensure_ollama()
+                models = await _ollama_models()
+        except (RuntimeError, httpx.HTTPError, ValueError, GeminiProviderError) as exc:
+            await update.effective_message.reply_text(f"Couldn't query model provider: {str(exc)[:400]}")
+            return
+        if target not in models:
+            await update.effective_message.reply_text(f"Model '{target}' isn't available. Use /chat to browse models.")
+            return
+        await _start_chat_session(update, context, provider_name, target)
+        return
+    status = await update.effective_message.reply_text("🧠 Checking available AI models…")
     try:
         await _ensure_ollama()
-        models = await _ollama_models()
+        local_models = await _ollama_models()
     except (RuntimeError, httpx.HTTPError, ValueError) as exc:
-        await status.edit_text(
-            "Couldn't reach Ollama. Check that ollama.service is installed and "
-            "the bot can run sudo -n systemctl start ollama.service.\n\n"
-            f"Details: {str(exc)[:700]}"
+        local_models = []
+        local_error = str(exc)[:200]
+    else:
+        local_error = ""
+    context.user_data["ollama_models"] = local_models
+    rows = [[InlineKeyboardButton(f"🦙 {name}", callback_data=f"ollama:model:{i}")]
+            for i, name in enumerate(local_models[:30])]
+    note = "Choose a local model below."
+    if GEMINI_API_KEY:
+        rows.append([InlineKeyboardButton("☁️ Gemini models →", callback_data="chat:gemini")])
+        note += " Use the arrow to browse Gemini."
+    else:
+        note += " Gemini is disabled until GEMINI_API_KEY is configured."
+    if not local_models:
+        note += f"\nLocal Ollama unavailable: {local_error or 'no installed models'}"
+    await status.edit_text("🤖 AI MODEL SELECTOR\n━━━━━━━━━━━━━━━━━━\n" + note +
+        "\n\nUse /chat MODELNAME to select directly.",
+        reply_markup=InlineKeyboardMarkup(rows) if rows else None)
+
+
+async def _gemini_models():
+    return await GeminiProvider(GEMINI_API_KEY, base_url=GEMINI_BASE_URL, timeout=GEMINI_TIMEOUT).list_models()
+
+
+async def _start_chat_session(update, context, provider, model):
+    key = _chat_key(update)
+    CHAT_SESSIONS[key] = {"provider": provider, "model": model, "history": [],
+        "temporary_facts": [], "memory_task": None, "busy": False, "task": None,
+        "busy_notice_sent": False}
+    context.user_data.pop("ollama_models", None)
+    context.user_data.pop("gemini_models", None)
+    await update.effective_message.reply_text(
+        f"{'☁️' if provider == 'gemini' else '🦙'} AI chat active\nProvider: {provider.title()}\nModel: {model}\n\n"
+        "Saved memory and profile commands work with either provider. Use /bye to end chat."
+    )
+
+
+async def chat_provider_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    if not await guard(update):
+        await query.edit_message_text("Not authorized.")
+        return
+    if _chat_key(update) in CHAT_SESSIONS:
+        await query.edit_message_text("AI chat is already active. Use /bye to end it.")
+        return
+    if query.data == "chat:local":
+        try:
+            await _ensure_ollama()
+            local_models = await _ollama_models()
+        except (RuntimeError, httpx.HTTPError, ValueError) as exc:
+            await query.edit_message_text(f"Couldn't query local Ollama: {str(exc)[:350]}")
+            return
+        context.user_data["ollama_models"] = local_models
+        rows = [[InlineKeyboardButton(f"🦙 {name}", callback_data=f"ollama:model:{i}")]
+                for i, name in enumerate(local_models[:30])]
+        if GEMINI_API_KEY:
+            rows.append([InlineKeyboardButton("☁️ Gemini models →", callback_data="chat:gemini")])
+        await query.edit_message_text(
+            "🤖 LOCAL AI MODELS\n━━━━━━━━━━━━━━━━━━\nSelect a local model or open Gemini.",
+            reply_markup=InlineKeyboardMarkup(rows) if rows else None,
         )
         return
-
-    if not models:
-        await status.edit_text("Ollama is running, but it has no downloaded models. Pull a model first.")
+    if not GEMINI_API_KEY:
+        await query.edit_message_text("Gemini isn't configured. Add GEMINI_API_KEY to .env and restart the bot.")
         return
+    status = await query.edit_message_text("☁️ Loading available Gemini models…")
+    try:
+        models = await _gemini_models()
+    except (GeminiProviderError, httpx.HTTPError) as exc:
+        await status.edit_text(f"Couldn't list Gemini models: {str(exc)[:400]}")
+        return
+    if not models:
+        await status.edit_text("No Gemini models were returned for this API key.")
+        return
+    context.user_data["gemini_models"] = models
+    rows = [[InlineKeyboardButton("✨ " + model_display_name(name), callback_data=f"gemini:model:{i}")]
+            for i, name in enumerate(models[:40])]
+    rows.append([InlineKeyboardButton("⬅️ Local models", callback_data="chat:local")])
+    await status.edit_text("☁️ GEMINI MODELS\n━━━━━━━━━━━━━━━━━━\nSelect a model or use /chat MODELNAME.",
+        reply_markup=InlineKeyboardMarkup(rows))
 
-    context.user_data["ollama_models"] = models
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton(f"🧠 {name}", callback_data=f"ollama:model:{index}")]
-        for index, name in enumerate(models)
-    ])
-    await status.edit_text(
-        "Choose an installed Ollama model for this chat.\n"
-        "Only models reported by your local Ollama server are listed.",
-        reply_markup=keyboard,
-    )
+
+async def gemini_model_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    if not await guard(update):
+        await query.edit_message_text("Not authorized.")
+        return
+    if _chat_key(update) in CHAT_SESSIONS:
+        await query.edit_message_text("AI chat is already active. Use /bye to end it.")
+        return
+    parts = (query.data or "").split(":")
+    models = context.user_data.get("gemini_models", [])
+    if len(parts) != 3 or not parts[2].isdigit() or int(parts[2]) >= len(models):
+        await query.edit_message_text("Selection expired. Send /chat to refresh.")
+        return
+    model = models[int(parts[2])]
+    try:
+        if model not in await _gemini_models():
+            await query.edit_message_text("Model no longer available. Send /chat to refresh.")
+            return
+    except (GeminiProviderError, httpx.HTTPError) as exc:
+        await query.edit_message_text(f"Couldn't verify model: {str(exc)[:350]}")
+        return
+    await _start_chat_session(update, context, "gemini", model)
 
 
 async def ollama_model_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1160,55 +1275,23 @@ async def ollama_model_selected(update: Update, context: ContextTypes.DEFAULT_TY
     if not await guard(update):
         await query.edit_message_text("Not authorized.")
         return
-    key = _chat_key(update)
-    if key in CHAT_SESSIONS:
-        await query.edit_message_text("Ollama chat is already active. Use /bye to end it.")
+    if _chat_key(update) in CHAT_SESSIONS:
+        await query.edit_message_text("AI chat is already active. Use /bye to end it.")
         return
     parts = (query.data or "").split(":")
     models = context.user_data.get("ollama_models", [])
-    if len(parts) != 3 or not parts[2].isdigit():
-        await query.edit_message_text("Invalid model selection. Send /chat to try again.")
+    if len(parts) != 3 or not parts[2].isdigit() or int(parts[2]) >= len(models):
+        await query.edit_message_text("Selection expired. Send /chat to refresh.")
         return
-    index = int(parts[2])
-    if index >= len(models):
-        await query.edit_message_text("That model selection expired. Send /chat to refresh the list.")
-        return
-    model = models[index]
-    # Refresh the installed-model list before starting, so stale buttons cannot select removed models.
+    model = models[int(parts[2])]
     try:
-        available = await _ollama_models()
-    except httpx.HTTPError as exc:
-        await query.edit_message_text(f"Couldn't query Ollama: {str(exc)[:500]}")
+        if model not in await _ollama_models():
+            await query.edit_message_text("Local model no longer installed. Send /chat to refresh.")
+            return
+    except (httpx.HTTPError, RuntimeError) as exc:
+        await query.edit_message_text(f"Couldn't verify local model: {str(exc)[:350]}")
         return
-    if model not in available:
-        await query.edit_message_text("That model is no longer installed. Send /chat to refresh the list.")
-        return
-
-    CHAT_SESSIONS[key] = {
-        "model": model,
-        "history": [],
-        "temporary_facts": [],
-        "memory_task": None,
-        "busy": False,
-        "task": None,
-        "busy_notice_sent": False,
-    }
-    context.user_data.pop("ollama_models", None)
-    await query.edit_message_text(
-        f"🦙 Ollama chat is active\nModel: {model}\n\n"
-        "Send a message to talk to the model. While it is generating, new messages "
-        "are ignored rather than queued. Other commands and menu buttons are disabled "
-        "until you send /bye. The conversation history is temporary; saved /memory "
-        "details persist between sessions."
-    )
-
-
-class ActiveOllamaChatFilter(filters.MessageFilter):
-    name = "ACTIVE_OLLAMA_CHAT"
-
-    def filter(self, message):
-        user = message.from_user
-        return bool(user and (message.chat.id, user.id) in CHAT_SESSIONS)
+    await _start_chat_session(update, context, "ollama", model)
 
 
 async def active_chat_callback(
@@ -1788,69 +1871,62 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         ))
         output_token_budget = 256 if (_wants_long_answer(user_text) or is_continuation) else 128
         generation_started = time.perf_counter()
-        async with httpx.AsyncClient(
-            timeout=httpx.Timeout(OLLAMA_TIMEOUT, connect=5.0)
-        ) as client:
-            response = await client.post(
-                f"{OLLAMA_BASE_URL}/api/chat",
-                json={
-                    "model": session["model"],
-                    "messages": [{"role": "system", "content": system_prompt}] + history,
-                    "stream": False,
-                    "keep_alive": "10m",
-                    "think": False,
-                    "options": {
-                        # Keep output bounded for the CPU-only i3-class host.
-                        # Fewer generated tokens mean shorter wait times on local models.
-                        "num_ctx": 2048,
-                        # Routine replies stay short; explicit research/detail requests
-                        # get more room without slowing every ordinary conversation.
-                        "num_predict": output_token_budget,
-                        "temperature": 0.58,
-                        "top_p": 0.85,
-                        "top_k": 30,
-                        "repeat_penalty": 1.15,
-                        "presence_penalty": 0.25,
-                    },
-                },
+        provider_name = session.get("provider", "ollama")
+        if provider_name == "gemini":
+            provider = GeminiProvider(GEMINI_API_KEY, base_url=GEMINI_BASE_URL, timeout=GEMINI_TIMEOUT)
+            payload = await provider.chat(
+                model=session["model"],
+                messages=[{"role": "system", "content": system_prompt}] + history,
+                max_tokens=max(512, output_token_budget),
             )
-            response.raise_for_status()
-            payload = response.json()
-        generation_wall_seconds = time.perf_counter() - generation_started
-        # Ollama reports nanosecond timings and token counts. Record them so
-        # performance tuning is based on this PC's real throughput, not guesses.
-        eval_count = payload.get("eval_count", 0) or 0
-        eval_duration = payload.get("eval_duration", 0) or 0
-        prompt_eval_count = payload.get("prompt_eval_count", 0) or 0
-        prompt_eval_duration = payload.get("prompt_eval_duration", 0) or 0
-        load_duration = payload.get("load_duration", 0) or 0
-        tokens_per_second = (
-            eval_count * 1_000_000_000 / eval_duration
-            if eval_duration > 0 else 0.0
-        )
+            answer = str(payload.get("choices", [{}])[0].get("message", {}).get("content", "") or "").strip()
+            generation_wall_seconds = time.perf_counter() - generation_started
+            eval_count = eval_duration = prompt_eval_count = prompt_eval_duration = load_duration = 0
+            tokens_per_second = 0.0
+            done_reason = str(payload.get("choices", [{}])[0].get("finish_reason") or "").casefold()
+            hit_output_limit = done_reason in {"length", "max_tokens"}
+        else:
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(OLLAMA_TIMEOUT, connect=5.0)
+            ) as client:
+                response = await client.post(
+                    f"{OLLAMA_BASE_URL}/api/chat",
+                    json={
+                        "model": session["model"],
+                        "messages": [{"role": "system", "content": system_prompt}] + history,
+                        "stream": False, "keep_alive": "10m", "think": False,
+                        "options": {
+                            "num_ctx": 2048, "num_predict": output_token_budget,
+                            "temperature": 0.58, "top_p": 0.85, "top_k": 30,
+                            "repeat_penalty": 1.15, "presence_penalty": 0.25,
+                        },
+                    },
+                )
+                response.raise_for_status()
+                payload = response.json()
+            generation_wall_seconds = time.perf_counter() - generation_started
+            eval_count = payload.get("eval_count", 0) or 0
+            eval_duration = payload.get("eval_duration", 0) or 0
+            prompt_eval_count = payload.get("prompt_eval_count", 0) or 0
+            prompt_eval_duration = payload.get("prompt_eval_duration", 0) or 0
+            load_duration = payload.get("load_duration", 0) or 0
+            tokens_per_second = eval_count * 1_000_000_000 / eval_duration if eval_duration > 0 else 0.0
+            answer = payload.get("message", {}).get("content", "").strip()
+            done_reason = str(payload.get("done_reason") or "").casefold()
+            hit_output_limit = done_reason in {"length", "max_tokens"} or (eval_count >= output_token_budget and eval_count > 0)
         log.info(
-            "Ollama performance model=%s wall=%.2fs load=%.2fs "
+            "AI performance provider=%s model=%s wall=%.2fs load=%.2fs "
             "prompt_eval=%.2fs/%s tokens generation=%.2fs/%s tokens (%.2f tok/s)",
-            session["model"],
-            generation_wall_seconds,
-            load_duration / 1_000_000_000,
-            prompt_eval_duration / 1_000_000_000,
-            prompt_eval_count,
-            eval_duration / 1_000_000_000,
-            eval_count,
-            tokens_per_second,
+            provider_name, session["model"], generation_wall_seconds,
+            load_duration / 1_000_000_000, prompt_eval_duration / 1_000_000_000,
+            prompt_eval_count, eval_duration / 1_000_000_000, eval_count, tokens_per_second,
         )
-        answer = payload.get("message", {}).get("content", "").strip()
         if not answer:
-            raise RuntimeError("Ollama returned no response text.")
-        done_reason = str(payload.get("done_reason") or "").casefold()
-        hit_output_limit = done_reason in {"length", "max_tokens"} or (
-            eval_count >= output_token_budget and eval_count > 0
-        )
+            raise RuntimeError("Selected AI provider returned no response text.")
         if hit_output_limit:
             log.warning(
-                "Ollama output may be truncated model=%s done_reason=%s eval_count=%s budget=%s",
-                session["model"], done_reason or "not-reported", eval_count, output_token_budget,
+                "AI output may be truncated provider=%s model=%s done_reason=%s budget=%s",
+                provider_name, session["model"], done_reason or "not-reported", output_token_budget,
             )
         # Small models sometimes echo a sentence or paragraph inside one answer.
         answer = _deduplicate_answer_text(answer)
@@ -1900,7 +1976,7 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         raise
     except (httpx.HTTPError, RuntimeError, ValueError) as exc:
         if CHAT_SESSIONS.get(key) is session:
-            await message.reply_text(f"⚠️ Ollama request failed: {str(exc)[:700]}")
+            await message.reply_text(f"⚠️ AI provider request failed: {str(exc)[:700]}")
     finally:
         if thinking_message is not None:
             try:
@@ -2870,7 +2946,7 @@ COMMAND_DESCRIPTIONS = [
     BotCommand("docker", "List and manage approved containers and projects"),
     BotCommand("links", "Show dashboards and PIN-protected credentials"),
     BotCommand("power", "Open confirmed lock/suspend/reboot/shutdown controls"),
-    BotCommand("chat", "Start a private chat with a local Ollama model"),
+    BotCommand("chat", "Choose a local Ollama or Gemini model"),
     BotCommand("bye", "End the active Ollama chat"),
     BotCommand("memory", "Show persistent Ollama memory"),
     BotCommand("profile", "Set persistent instructions and preferences for Ollama"),
@@ -2928,6 +3004,8 @@ def main():
     app.add_handler(CommandHandler("profile", ollama_profile_command))
     app.add_handler(CommandHandler("remember", ollama_remember_command))
     app.add_handler(CommandHandler("forget", ollama_forget_command))
+    app.add_handler(CallbackQueryHandler(chat_provider_callback, pattern=r"^chat:(?:gemini|local)$"))
+    app.add_handler(CallbackQueryHandler(gemini_model_selected, pattern=r"^gemini:model:"))
     app.add_handler(CallbackQueryHandler(ollama_model_selected, pattern=r"^ollama:model:"))
     app.add_handler(CommandHandler("status", status))
     app.add_handler(CommandHandler("cpu", cpu))
