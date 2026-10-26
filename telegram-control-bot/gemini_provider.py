@@ -25,7 +25,7 @@ class GeminiProvider:
 
     async def list_models(self) -> list[str]:
         async with self._client() as client:
-            response = await client.get("/models")
+            response = await client.get("models")
             if response.is_error:
                 raise GeminiProviderError(_safe_error(response))
             payload = response.json()
@@ -41,7 +41,7 @@ class GeminiProvider:
 
     async def chat(self, *, model: str, messages: list[dict], max_tokens: int = 512) -> dict:
         async with self._client() as client:
-            response = await client.post("/chat/completions", json={
+            response = await client.post("chat/completions", json={
                 "model": model,
                 "messages": messages,
                 "max_tokens": max(64, min(int(max_tokens), 4096)),
