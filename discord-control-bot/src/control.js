@@ -84,6 +84,56 @@ export async function getSystemSnapshot() {
     topProcesses: processes, sampledAt: new Date().toISOString(),
   };
 }
+const SERVICE_BY_ID = new Map(SERVICES.map(service => [service.id, service]));
+const SERVICE_ACTIONS = new Set(["start", "stop", "restart"]);
+const CONTAINER_ACTIONS = new Set(["start", "stop", "restart"]);
+
+export function validateServiceAction(serviceId, action) {
+  if (typeof serviceId !== "string" || !SERVICE_BY_ID.has(serviceId)) {
+    throw Object.assign(new Error("Unknown service"), { status: 400 });
+  }
+  if (!SERVICE_ACTIONS.has(action)) throw Object.assign(new Error("Unsupported service action"), { status: 400 });
+  return { service: SERVICE_BY_ID.get(serviceId), action };
+}
+export async function performServiceAction(serviceId, action) {
+  const target = validateServiceAction(serviceId, action);
+  const args = target.service.scope === "user"
+    ? ["--user", target.action, target.service.unit]
+    : ["-n", "systemctl", target.action, target.service.unit];
+  const program = target.service.scope === "user" ? "systemctl" : "sudo";
+  try {
+    await execFileAsync(program, args, { timeout: 15_000, maxBuffer: 32 * 1024, windowsHide: true });
+  } catch (error) {
+    const detail = target.service.scope === "system"
+      ? "System service action was denied. Configure a narrow sudoers rule for this exact unit, or use a user-level service."
+      : "User service action failed. Check the user systemd session and unit name.";
+    throw Object.assign(new Error(detail), { status: 503 });
+  }
+  console.info(JSON.stringify({ event: "service_action", serviceId, action, at: new Date().toISOString() }));
+  return { ok: true, serviceId, action };
+}
+export function validateContainerAction(containerId, action) {
+  if (typeof containerId !== "string" || containerId.length < 1 || containerId.length > 128) {
+    throw Object.assign(new Error("Invalid container identifier"), { status: 400 });
+  }
+  if (!CONTAINER_ACTIONS.has(action)) throw Object.assign(new Error("Unsupported container action"), { status: 400 });
+  return { containerId, action };
+}
+export async function performContainerAction(containerId, action) {
+  const request = validateContainerAction(containerId, action);
+  const listed = await runReadOnly("docker", ["ps", "-a", "--format", "{{.ID}}\\t{{.Names}}"]);
+  if (!listed.ok && !listed.stdout) throw Object.assign(new Error("Docker is unavailable or permission was denied"), { status: 503 });
+  const found = listed.stdout.split("\\n").map(line => line.split("\\t")).find(([id, name]) => id === request.containerId || name === request.containerId);
+  if (!found) throw Object.assign(new Error("Container is not in the current Docker inventory"), { status: 404 });
+  try {
+    await execFileAsync("docker", [request.action, found[0]], { timeout: 30_000, maxBuffer: 32 * 1024, windowsHide: true });
+  } catch {
+    throw Object.assign(new Error("Docker action failed. Check container state and Docker permissions."), { status: 503 });
+  }
+  console.info(JSON.stringify({ event: "container_action", containerId: found[0], action, at: new Date().toISOString() }));
+  return { ok: true, containerId: found[0], action };
+}
+
 export async function getServiceSnapshot() {
   return Promise.all(SERVICES.map(async service => {
     const args = service.scope === "user" ? ["--user", "is-active", service.unit] : ["is-active", service.unit];
@@ -99,5 +149,5 @@ export async function getContainerSnapshot() {
     const [id, name, image, status, ports] = line.split("\t");
     return { id, name, image, status, ports: ports || "" };
   }) : [];
-  return { available: true, detail: containers.length ? `${containers.length} running container(s)` : "Docker is available; no running containers", containers };
+  return { available: true, detail: containers.length ? `${containers.length} container(s)` : "Docker is available; no containers found", containers };
 }
