@@ -20,7 +20,7 @@ function drawCards(sections) {
     <article class="module-card" data-view="${item.id}" tabindex="0" role="button" aria-label="Open ${item.title}">
       <div class="module-icon">${symbols[item.id] || "◈"}</div>
       <h4>${item.title}</h4><p>${item.description}</p>
-      <div class="card-bottom"><span>BRIDGE PENDING</span><b>↗</b></div>
+      <div class="card-bottom"><span>OPEN MODULE</span><b>↗</b></div>
     </article>`).join("");
   document.querySelectorAll(".module-card").forEach(card => {
     card.addEventListener("click", () => selectView(card.dataset.view));
@@ -61,7 +61,6 @@ async function start() {
     const { code } = await discordSdk.commands.authorize({
       client_id: id,
       response_type: "code",
-      state: "",
       prompt: "none",
       scope: ["identify"],
     });
@@ -73,6 +72,7 @@ async function start() {
     $("#user-state").textContent = "Allowlist verified";
     const overview = await api("/api/overview");
     drawCards(overview.sections);
+    selectView("overview");
     const [system, serviceData, containerData] = await Promise.all([api("/api/system"), api("/api/services"), api("/api/containers")]);
     $("#cpu-value").textContent = `${system.cpu.usagePercent}%`;
     $("#cpu-detail").textContent = `${system.cpu.cores} logical cores · load ${system.cpu.loadAverage.join(" / ")}`;
@@ -99,6 +99,7 @@ async function start() {
     $("#user-state").textContent = "Session unavailable";
     alert(error.message || "Could not initialize Discord session.", "error");
     drawCards(Object.entries(moduleInfo).filter(([key]) => key !== "overview").map(([id, item]) => ({ id, title: item[0], description: "Available after Discord authentication and local bridge setup." })));
+    selectView("overview");
   }
 }
 $("#logout").addEventListener("click", async () => {
