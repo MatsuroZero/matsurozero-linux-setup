@@ -4,6 +4,7 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { assertAuthorizedDiscordUser } from "./authz.js";
+import { getSystemSnapshot } from "./control.js";
 
 const ROOT = fileURLToPath(new URL("../public/", import.meta.url));
 const PORT = Number(process.env.PORT || 8787);
@@ -109,6 +110,9 @@ export function createAppServer() {
         if (!session) return send(res, 401, { error: "Authenticate through Discord first" });
         try { assertAuthorizedDiscordUser(session.userId, process.env.DISCORD_ALLOWED_USER_ID); }
         catch { return send(res, 403, { error: "Not authorized" }); }
+        if (req.method === "GET" && url.pathname === "/api/system") {
+          return send(res, 200, await getSystemSnapshot());
+        }
         if (req.method === "GET" && url.pathname === "/api/overview") {
           return send(res, 200, {
             user: { id: session.userId, name: session.username },
