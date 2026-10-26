@@ -80,15 +80,11 @@ class ArithmeticTests(unittest.TestCase):
         self.assertIn("research", query.casefold())
 
     def test_contextual_media_preferences_store_title_and_character(self):
-        session = {
-            "temporary_facts": [],
-            "history": [
-                {"role": "user", "content": "Let's watch JoJo's Bizarre Adventure together."}
-            ],
-        }
+        session = {"temporary_facts": [], "history": []}
         self.assertTrue(bot._extract_explicit_temporary_fact(
             session,
-            "I really love this show, it's my favorite anime, I like Jotaro a lot, do you know any of the cast?",
+            "Let's watch JoJo's Bizarre Adventure together, I really love this show, "
+            "it's my favorite anime, I like Jotaro a lot, do you know any of the cast?",
         ))
         facts = [item["fact"] for item in session["temporary_facts"]]
         self.assertIn("Matthew's favorite anime is JoJo's Bizarre Adventure", facts)
