@@ -256,17 +256,17 @@ def _question_requests_numeric_fact(question):
 def _requested_metric_terms(question):
     """Return a narrow set of terms naming a quantity explicitly requested."""
     text = " ".join(str(question or "").casefold().split())
-    match = re.search(r"\\bhow many\\s+([a-z]+)", text)
+    match = re.search(r"\bhow many\s+([a-z]+)", text)
     if match:
         noun = match.group(1)
         return {noun, noun.rstrip("s")}
-    match = re.search(r"\\bhow much\\s+([a-z]+)", text)
+    match = re.search(r"\bhow much\s+([a-z]+)", text)
     if match:
         noun = match.group(1)
         return {noun, noun.rstrip("s")}
-    if re.search(r"\\bpopulation\\b", text):
+    if re.search(r"\bpopulation\b", text):
         return {"population", "inhabitant", "inhabitants", "resident", "residents"}
-    if re.search(r"\\bwhat percent(?:age)?\\b", text):
+    if re.search(r"\bwhat percent(?:age)?\b", text):
         return {"percent", "percentage"}
     return set()
 
