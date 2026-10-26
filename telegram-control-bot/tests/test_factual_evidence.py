@@ -197,7 +197,7 @@ class EvidenceFormattingTests(unittest.TestCase):
         })
         self.assertIn("Potential reference", footer)
         self.assertIn("not independently verified", footer)
-        self.assertIn("Wikipedia article extract: Canberra", footer)
+        self.assertIn("Wikipedia: Canberra", footer)
         self.assertIn("https://en.wikipedia.org/?curid=123", footer)
 
     def test_prompt_includes_allow_listed_stackoverflow_primary_and_extra_sources(self):
