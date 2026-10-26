@@ -798,15 +798,15 @@ def _trusted_evidence_records(evidence):
         candidates.extend(item for item in extras if isinstance(item, dict))
     records = []
     seen = set()
-    allowed_hosts = {"en.wikipedia.org", "stackoverflow.com"}
     for item in candidates:
         title = _clean_excerpt(item.get("title"))
         excerpt = _clean_excerpt(item.get("excerpt"))
         url = str(item.get("url") or "").strip()
         if title and excerpt and _is_allowed_source_url(url) and url not in seen:
+            hostname = urlparse(url).hostname
             records.append({
                 "title": title, "excerpt": excerpt, "url": url,
-                "source": str(item.get("source") or ("Wikipedia" if parsed.hostname == "en.wikipedia.org" else "Stack Overflow")),
+                "source": str(item.get("source") or ("Wikipedia" if hostname == "en.wikipedia.org" else "Stack Overflow")),
             })
             seen.add(url)
         if len(records) >= 3:
