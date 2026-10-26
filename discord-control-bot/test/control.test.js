@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { getSystemSnapshot, getServiceSnapshot, getContainerSnapshot, getNetworkSnapshot, getProjectSnapshot, validateProjectAction, validatePowerAction } from "../src/control.js";
+import { getSystemSnapshot, getServiceSnapshot, getContainerSnapshot, getNetworkSnapshot, getProjectSnapshot, getHealthSnapshot, getDoctorSnapshot, validateProjectAction, validatePowerAction } from "../src/control.js";
 
 test("system snapshot returns bounded, typed read-only metrics", async () => {
   const snapshot = await getSystemSnapshot();
@@ -65,4 +65,14 @@ test("power actions accept only the four fixed Serpantinum verbs", () => {
   assert.equal(validatePowerAction("lock").commandArgs[0], "lock");
   assert.equal(validatePowerAction("shutdown").commandArgs[0], "poweroff");
   assert.throws(() => validatePowerAction("run-command"), error => error.status === 400);
+});
+
+test("health and doctor snapshots return bounded structured checks", async () => {
+  const health = await getHealthSnapshot();
+  assert.ok(Array.isArray(health.endpoints));
+  assert.ok(health.endpoints.length <= 10);
+  assert.equal(typeof health.summary.failed, "number");
+  const doctor = await getDoctorSnapshot();
+  assert.ok(Array.isArray(doctor.checks));
+  assert.ok(doctor.checks.every(check => ["ok", "check"].includes(check.state)));
 });
