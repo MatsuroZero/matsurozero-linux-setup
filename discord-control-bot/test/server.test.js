@@ -80,3 +80,17 @@ test("memory, project, and power APIs reject unauthenticated mutations", async (
     }
   });
 });
+
+test("dashboard links and credential reveal require an authenticated session", async () => {
+  await withServer(async base => {
+    const origin = new URL(base).origin;
+    const links = await fetch(base + "/api/links");
+    assert.equal(links.status, 401);
+    const credentials = await fetch(base + "/api/links/credentials", {
+      method: "POST",
+      headers: { "content-type": "application/json", origin },
+      body: JSON.stringify({ pin: "not-a-pin" }),
+    });
+    assert.equal(credentials.status, 401);
+  });
+});
