@@ -780,6 +780,29 @@ class EvidenceConflictDetectionTests(unittest.TestCase):
         self.assertIn("POSSIBLE SOURCE CONFLICTS DETECTED", prompt)
         self.assertIn("Do not silently choose one", prompt)
 
+    def test_unrelated_source_conflict_is_ignored_for_question_scoped_checks(self):
+        evidence = {
+            "title": "Python on Linux",
+            "excerpt": "Python runs on Linux in many common environments.",
+            "url": "https://en.wikipedia.org/?curid=123",
+            "additional_sources": [{
+                "title": "Python Linux behavior",
+                "excerpt": "Python does not run on Linux in many common environments.",
+                "url": "https://stackoverflow.com/a/123",
+                "source": "Stack Overflow answer",
+            }],
+        }
+        self.assertEqual(
+            factual_evidence.detect_evidence_conflicts(
+                evidence, question="What is the capital of Australia?"
+            ),
+            [],
+        )
+        prompt = factual_evidence.format_multi_source_evidence_for_prompt(
+            evidence, question="What is the capital of Australia?"
+        )
+        self.assertNotIn("POSSIBLE SOURCE CONFLICTS DETECTED", prompt)
+
     def test_numeric_disagreement_between_sources_is_flagged(self):
         evidence = {
             "title": "Planet X",
