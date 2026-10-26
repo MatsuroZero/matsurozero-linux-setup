@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
-import { randomBytes, timingSafeEqual } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { assertAuthorizedDiscordUser } from "./authz.js";
@@ -43,11 +43,6 @@ function getSession(req) {
   }
   return session;
 }
-function sameSecret(a, b) {
-  if (typeof a !== "string" || typeof b !== "string") return false;
-  const aa = Buffer.from(a), bb = Buffer.from(b);
-  return aa.length === bb.length && timingSafeEqual(aa, bb);
-}
 async function discordApi(path, token) {
   const response = await fetch(`https://discord.com/api/v10${path}`, { headers: { authorization: `Bearer ${token}`, accept: "application/json" }, signal: AbortSignal.timeout(8000) });
   if (!response.ok) throw new Error(`Discord API rejected request (${response.status})`);
@@ -80,7 +75,7 @@ export function createAppServer() {
         return send(res, 200, { applicationId: APP_ID });
       }
       if (req.method === "GET" && url.pathname === "/api/health") {
-        return send(res, 200, { ok: true, service: "discord-control-activity", bridge: "not-configured" });
+        return send(res, 200, { ok: true, service: "discord-control-activity", hostMetrics: "available", controlActions: "disabled" });
       }
       if (req.method === "POST" && url.pathname === "/api/session") {
         const { code } = await readJson(req);
