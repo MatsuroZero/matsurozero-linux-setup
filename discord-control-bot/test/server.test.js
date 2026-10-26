@@ -60,3 +60,23 @@ test("control mutations reject cross-origin requests before authentication", asy
     assert.match((await response.json()).error, /Cross-origin/);
   });
 });
+
+test("memory, project, and power APIs reject unauthenticated mutations", async () => {
+  await withServer(async base => {
+    const origin = new URL(base).origin;
+    const cases = [
+      ["/api/ai/memory", "GET"],
+      ["/api/ai/memory/profile", "POST", { profile: "test" }],
+      ["/api/projects/action", "POST", { projectId: "odysseus", action: "start" }],
+      ["/api/power/action", "POST", { action: "lock" }],
+    ];
+    for (const [path, method, body] of cases) {
+      const response = await fetch(base + path, {
+        method,
+        headers: { "content-type": "application/json", origin },
+        ...(body ? { body: JSON.stringify(body) } : {}),
+      });
+      assert.equal(response.status, 401, path);
+    }
+  });
+});
