@@ -254,10 +254,23 @@ def _question_requests_numeric_fact(question):
 
 
 def _evidence_has_required_numeric_value(question, excerpt):
-    """Require a numeric value in the passage for explicitly quantitative questions."""
+    """Require a question-relevant sentence containing a numeric value.
+
+    A number somewhere in a passage is not enough: for quantitative questions,
+    at least one sentence must contain both a recognized numeric value and a
+    content term from the question. This is still lexical filtering, not answer
+    extraction or semantic verification.
+    """
     if not _question_requests_numeric_fact(question):
         return True
-    return bool(_normalized_numeric_values(excerpt))
+    question_terms = _content_tokens(question)
+    for sentence in re.split(r"(?<=[.!?])\\s+", str(excerpt or "")):
+        if (
+            _normalized_numeric_values(sentence)
+            and question_terms & _content_tokens(sentence)
+        ):
+            return True
+    return False
 
 
 def _evidence_matches_question(question_terms, title, excerpt, minimum_score=0.12):
