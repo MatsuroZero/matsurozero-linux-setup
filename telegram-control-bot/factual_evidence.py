@@ -173,7 +173,10 @@ async def retrieve_wikipedia_evidence(question):
         score, _, page_id, title, excerpt = max(ranked, key=lambda item: (item[0], item[1]))
         # A search result with almost no question-specific overlap is more likely
         # to mislead a small model than to help. Abstain rather than pass it along.
-        if not _evidence_matches_question(question_terms, title, excerpt):
+        if (
+            not _evidence_matches_question(question_terms, title, excerpt)
+            or not _evidence_has_required_numeric_value(question, excerpt)
+        ):
             return None
         return {
             "title": title,
@@ -235,6 +238,26 @@ def _evidence_relevance_score(question_terms, title, excerpt):
     title_coverage = len(terms & title_terms) / len(terms)
     excerpt_coverage = len(terms & excerpt_terms) / len(terms)
     return 0.35 * title_coverage + 0.65 * excerpt_coverage
+
+
+def _question_requests_numeric_fact(question):
+    """Recognize question forms whose answer normally requires a numeric value."""
+    text = " ".join(str(question or "").casefold().split())
+    patterns = (
+        r"\bhow many\b", r"\bhow much\b", r"\bwhat year\b",
+        r"\bwhich year\b", r"\bwhat date\b", r"\bwhich date\b",
+        r"\bwhat percentage\b", r"\bwhat percent\b",
+        r"\bwhat temperature\b", r"\bhow old\b",
+        r"\bwhat is the population\b", r"\bhow far\b", r"\bhow long\b",
+    )
+    return any(re.search(pattern, text) for pattern in patterns)
+
+
+def _evidence_has_required_numeric_value(question, excerpt):
+    """Require a numeric value in the passage for explicitly quantitative questions."""
+    if not _question_requests_numeric_fact(question):
+        return True
+    return bool(_normalized_numeric_values(excerpt))
 
 
 def _evidence_matches_question(question_terms, title, excerpt, minimum_score=0.12):
@@ -779,8 +802,11 @@ async def _retrieve_multi_source_evidence_uncached(question):
     relevant = [
         dict(item, relevance_score=round(score, 3))
         for score, _, item in ranked_sources[:3]
-        if _evidence_matches_question(
-            question_terms, item.get("title", ""), item.get("excerpt", "")
+        if (
+            _evidence_matches_question(
+                question_terms, item.get("title", ""), item.get("excerpt", "")
+            )
+            and _evidence_has_required_numeric_value(question, item.get("excerpt", ""))
         )
     ]
     if not relevant:
