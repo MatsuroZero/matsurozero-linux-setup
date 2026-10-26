@@ -7,6 +7,7 @@ import { assertAuthorizedDiscordUser } from "./authz.js";
 import { getSystemSnapshot, getServiceSnapshot, getContainerSnapshot, getNetworkSnapshot, getProjectSnapshot, performProjectAction, getProjectLogs, getContainerLogs, validatePowerAction, performPowerAction, performServiceAction, performContainerAction } from "./control.js";
 import { chat, getModelCatalog } from "./ai.js";
 import { getMemory, setMemoryProfile, rememberFact, forgetMemoryFacts } from "./memory.js";
+import { getRegistrySnapshot, runSavedCommand, runSavedProfile } from "./registry.js";
 
 const ROOT = fileURLToPath(new URL("../public/", import.meta.url));
 const PORT = Number(process.env.PORT || 8787);
@@ -126,7 +127,7 @@ export function createAppServer() {
       if (req.method === "GET" && url.pathname === "/api/health") {
         return send(res, 200, { ok: true, service: "discord-control-activity", hostMetrics: "available", controlActions: "allowlisted" });
       }
-      if (req.method === "POST" && ["/api/session", "/api/logout", "/api/services/action", "/api/containers/action", "/api/projects/action", "/api/projects/logs", "/api/containers/logs", "/api/power/action", "/api/links/credentials", "/api/ai/chat", "/api/ai/memory/profile", "/api/ai/memory/remember", "/api/ai/memory/forget"].includes(url.pathname) && !hasSameOrigin(req)) {
+      if (req.method === "POST" && ["/api/session", "/api/logout", "/api/services/action", "/api/containers/action", "/api/projects/action", "/api/projects/logs", "/api/containers/logs", "/api/power/action", "/api/links/credentials", "/api/commands/run", "/api/profiles/run", "/api/ai/chat", "/api/ai/memory/profile", "/api/ai/memory/remember", "/api/ai/memory/forget"].includes(url.pathname) && !hasSameOrigin(req)) {
         return send(res, 403, { error: "Cross-origin request rejected" });
       }
       if (req.method === "POST" && url.pathname === "/api/session") {
@@ -157,6 +158,19 @@ export function createAppServer() {
         if (!session) return send(res, 401, { error: "Authenticate through Discord first" });
         try { assertAuthorizedDiscordUser(session.userId, process.env.DISCORD_ALLOWED_USER_ID); }
         catch { return send(res, 403, { error: "Not authorized" }); }
+        if (req.method === "GET" && url.pathname === "/api/registry") {
+          return send(res, 200, await getRegistrySnapshot());
+        }
+        if (req.method === "POST" && url.pathname === "/api/commands/run") {
+          const { name } = await readJson(req, 4096);
+          enforceActionCooldown(session.userId);
+          return send(res, 200, await runSavedCommand(name));
+        }
+        if (req.method === "POST" && url.pathname === "/api/profiles/run") {
+          const { name } = await readJson(req, 4096);
+          enforceActionCooldown(session.userId);
+          return send(res, 200, await runSavedProfile(name));
+        }
         if (req.method === "GET" && url.pathname === "/api/links") {
           return send(res, 200, { dashboards: DASHBOARDS.map(({ id, name, url }) => ({ id, name, url: safeHttpUrl(url) })) });
         }
