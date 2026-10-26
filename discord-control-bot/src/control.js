@@ -1,5 +1,6 @@
 import os from "node:os";
-import { statfs, readFile, readdir } from "node:fs/promises";
+import { statfs, readFile, readdir, access } from "node:fs/promises";
+import { join } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
@@ -145,6 +146,12 @@ export async function getSystemSnapshot() {
     temperatures, topProcesses: processes, sampledAt: new Date().toISOString(),
   };
 }
+const PROJECTS = [
+  { id: "odysseus", name: "Odysseus", composeFile: join(os.homedir(), "Projects", "odysseus", "docker-compose.yml") },
+  { id: "uptime-kuma", name: "Uptime Kuma", composeFile: join(os.homedir(), "Projects", "uptime-kuma", "compose.yaml") },
+  { id: "localnexus", name: "LocalNexus", composeFile: join(os.homedir(), "Projects", "ReverseEngineering", "LocalNexus", "compose.yaml") },
+];
+const PROJECT_BY_ID = new Map(PROJECTS.map(project => [project.id, project]));
 const SERVICE_BY_ID = new Map(SERVICES.map(service => [service.id, service]));
 const SERVICE_ACTIONS = new Set(["start", "stop", "restart"]);
 const CONTAINER_ACTIONS = new Set(["start", "stop", "restart"]);
@@ -218,4 +225,78 @@ export async function getContainerSnapshot() {
     } catch { return null; }
   }).filter(Boolean) : [];
   return { available: true, detail: containers.length ? `${containers.length} container(s)` : "Docker is available; no containers found", containers };
+}
+
+const PROJECT_ACTIONS = new Set(["start", "stop", "restart"]);
+function validateProjectAction(projectId, action) {
+  if (typeof projectId !== "string" || !PROJECT_BY_ID.has(projectId)) {
+    throw Object.assign(new Error("Unknown Docker project"), { status: 400 });
+  }
+  if (!PROJECT_ACTIONS.has(action)) throw Object.assign(new Error("Unsupported project action"), { status: 400 });
+  return { project: PROJECT_BY_ID.get(projectId), action };
+}
+function parseComposePs(raw) {
+  return raw.split("\n").filter(Boolean).slice(0, 100).map(line => {
+    try {
+      const item = JSON.parse(line);
+      return {
+        name: item.Name || item.Service || item.ID || "container",
+        state: String(item.State || item.Status || "unknown").toLowerCase(),
+        image: item.Image || "",
+        status: item.Status || item.State || "unknown",
+      };
+    } catch { return null; }
+  }).filter(Boolean);
+}
+export async function getProjectSnapshot() {
+  return Promise.all(PROJECTS.map(async project => {
+    try { await access(project.composeFile); }
+    catch { return { id: project.id, name: project.name, available: false, state: "compose-file-missing", containers: [] }; }
+    const result = await runReadOnly("docker", ["compose", "-f", project.composeFile, "ps", "--format", "json"], 10_000);
+    if (!result.ok && !result.stdout) return { id: project.id, name: project.name, available: false, state: "docker-unavailable", containers: [] };
+    const containers = parseComposePs(result.stdout);
+    const running = containers.filter(item => item.state.includes("running")).length;
+    const state = !containers.length ? "stopped" : running === containers.length ? "running" : running > 0 ? "partial" : "stopped";
+    return { id: project.id, name: project.name, available: true, state, containers };
+  }));
+}
+export async function performProjectAction(projectId, action) {
+  const request = validateProjectAction(projectId, action);
+  try { await access(request.project.composeFile); }
+  catch { throw Object.assign(new Error("Configured Compose file is missing on the Activity host"), { status: 404 }); }
+  const composeAction = request.action === "start" ? ["up", "-d"] : [request.action];
+  try {
+    const { stdout, stderr } = await execFileAsync("docker", ["compose", "-f", request.project.composeFile, ...composeAction], { timeout: 90_000, maxBuffer: 256 * 1024, windowsHide: true });
+    console.info(JSON.stringify({ event: "docker_project_action", projectId, action, at: new Date().toISOString() }));
+    return { ok: true, projectId, action, output: String(stdout || stderr || "").slice(-12000) };
+  } catch {
+    throw Object.assign(new Error("Docker Compose action failed. Check the project file and Docker permissions."), { status: 503 });
+  }
+}
+export async function getProjectLogs(projectId, lines = 100) {
+  if (typeof projectId !== "string" || !PROJECT_BY_ID.has(projectId)) throw Object.assign(new Error("Unknown Docker project"), { status: 400 });
+  if (!Number.isInteger(lines) || lines < 1 || lines > 1000) throw Object.assign(new Error("Log line count must be between 1 and 1000"), { status: 400 });
+  const project = PROJECT_BY_ID.get(projectId);
+  try { await access(project.composeFile); }
+  catch { throw Object.assign(new Error("Configured Compose file is missing on the Activity host"), { status: 404 }); }
+  try {
+    const { stdout, stderr } = await execFileAsync("docker", ["compose", "-f", project.composeFile, "logs", "--tail", String(lines), "--no-color"], { timeout: 20_000, maxBuffer: 256 * 1024, windowsHide: true });
+    return { projectId, lines, output: String(stdout || stderr || "No log output").slice(-30000) };
+  } catch {
+    throw Object.assign(new Error("Could not read Docker Compose logs"), { status: 503 });
+  }
+}
+export async function getContainerLogs(containerId, lines = 100) {
+  validateContainerAction(containerId, "start");
+  if (!Number.isInteger(lines) || lines < 1 || lines > 1000) throw Object.assign(new Error("Log line count must be between 1 and 1000"), { status: 400 });
+  const inventory = await getContainerSnapshot();
+  if (!inventory.available) throw Object.assign(new Error("Docker inventory is unavailable"), { status: 503 });
+  const found = inventory.containers.find(item => item.id === containerId || item.name === containerId);
+  if (!found) throw Object.assign(new Error("Container is not in the current Docker inventory"), { status: 404 });
+  try {
+    const { stdout, stderr } = await execFileAsync("docker", ["logs", "--tail", String(lines), found.id], { timeout: 20_000, maxBuffer: 256 * 1024, windowsHide: true });
+    return { containerId: found.id, lines, output: String(stdout || stderr || "No log output").slice(-30000) };
+  } catch {
+    throw Object.assign(new Error("Could not read container logs"), { status: 503 });
+  }
 }
