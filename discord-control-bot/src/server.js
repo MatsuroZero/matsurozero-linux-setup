@@ -68,7 +68,9 @@ function checkCredentialPin(userId, supplied) {
   const expected = process.env.LINKS_PIN || "";
   if (expected.length < 6) return { ok: false, notConfigured: true };
   const candidate = typeof supplied === "string" ? supplied : "";
-  const matches = candidate.length === expected.length && timingSafeEqual(Buffer.from(candidate), Buffer.from(expected));
+  const candidateBuffer = Buffer.from(candidate, "utf8");
+  const expectedBuffer = Buffer.from(expected, "utf8");
+  const matches = candidateBuffer.length === expectedBuffer.length && timingSafeEqual(candidateBuffer, expectedBuffer);
   if (matches) {
     credentialAttempts.delete(userId);
     return { ok: true };
