@@ -53,8 +53,7 @@ Review `deploy/discord-control-activity.service.example` before enabling it. The
 From `discord-control-bot`, with Node.js 22+ and environment variables configured:
 
 ```bash
-npm run check
-npm test
+npm run preflight
 npm start
 ```
 
