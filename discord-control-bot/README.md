@@ -41,7 +41,7 @@ The installer creates a private environment file and installs a systemd user uni
 
 ### Optional systemd user service template
 
-The repository includes `deploy/discord-control-activity.service.example`. Edit its `WorkingDirectory` to the actual clone path, create `~/.config/discord-control-activity/env` with mode `600`, then install the unit under `~/.config/systemd/user/`. The template is a starting point and requires a deployment review, especially if the host needs system-level service control or Docker access. It grants write access to the default shared memory directory; if `OLLAMA_MEMORY_PATH` points elsewhere, add that directory to `ReadWritePaths` too.
+The repository includes `deploy/discord-control-activity.service.example`. Edit its `WorkingDirectory` to the actual clone path, create `~/.config/discord-control-activity/env` with mode `600`, then install the unit under `~/.config/systemd/user/`. The template is a starting point and requires a deployment review, especially if the host needs system-level service control or Docker access. It grants write access to `~/Projects`, the Nexus registry directory, and the default shared memory directory. If saved commands need to write elsewhere, or `OLLAMA_MEMORY_PATH` points to another location, add those paths to `ReadWritePaths` after reviewing the trust implications.
 
 
 
