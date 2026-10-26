@@ -11,6 +11,7 @@ A private Discord Activity web app for monitoring a Linux host and safely managi
 - Server-side allowlist validation against `DISCORD_ALLOWED_USER_ID`; every private API route re-checks the authenticated session identity.
 - Read-only system metrics: sampled CPU utilization, memory, root filesystem usage, uptime, thermal-zone readings when exposed by Linux, network interface names, sampled per-interface RX/TX throughput, and top processes.
 - Read-only inventory of known Nexus systemd services and Docker containers, including systemd autostart state.
+- Health endpoint checks and a Nexus-style doctor report covering Node.js, Docker, systemd services, Compose files, and the saved registry.
 - Confirmed start/stop/restart and enable/disable-autostart actions for a fixed allowlist of services, plus fixed Docker Compose project/container controls and bounded logs. Mutations use server-side origin checks and per-user action cooldown. No arbitrary shell endpoint exists.
 - Fixed Serpantinum lock, suspend, reboot, and shutdown actions, each guarded by an explicit UI confirmation and server-side allowlist.
 - Read-only listing and confirmed execution of pre-registered Nexus commands and profiles. The Activity accepts only saved registry names, uses argv arrays without enabling shell mode, and stops a profile at the first failed step.
