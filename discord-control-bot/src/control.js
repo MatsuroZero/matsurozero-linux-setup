@@ -113,7 +113,7 @@ export async function performServiceAction(serviceId, action) {
   return { ok: true, serviceId, action };
 }
 export function validateContainerAction(containerId, action) {
-  if (typeof containerId !== "string" || containerId.length < 1 || containerId.length > 128) {
+  if (typeof containerId !== "string" || !/^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/.test(containerId)) {
     throw Object.assign(new Error("Invalid container identifier"), { status: 400 });
   }
   if (!CONTAINER_ACTIONS.has(action)) throw Object.assign(new Error("Unsupported container action"), { status: 400 });
