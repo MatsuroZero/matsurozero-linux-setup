@@ -772,6 +772,22 @@ async def _retrieve_multi_source_evidence_uncached(question):
 
 
 
+def _is_allowed_source_url(url):
+    """Accept only plain HTTPS URLs on the exact source hosts and default port."""
+    try:
+        parsed = urlparse(str(url or "").strip())
+        return (
+            parsed.scheme == "https"
+            and parsed.hostname in {"en.wikipedia.org", "stackoverflow.com"}
+            and parsed.port in (None, 443)
+            and not parsed.username
+            and not parsed.password
+        )
+    except ValueError:
+        # urlparse can raise for malformed ports or bracketed host syntax.
+        return False
+
+
 def _trusted_evidence_records(evidence):
     """Return bounded evidence records from allow-listed HTTPS hosts only."""
     if not isinstance(evidence, dict):
@@ -787,8 +803,7 @@ def _trusted_evidence_records(evidence):
         title = _clean_excerpt(item.get("title"))
         excerpt = _clean_excerpt(item.get("excerpt"))
         url = str(item.get("url") or "").strip()
-        parsed = urlparse(url)
-        if title and excerpt and parsed.scheme == "https" and parsed.hostname in allowed_hosts and url not in seen:
+        if title and excerpt and _is_allowed_source_url(url) and url not in seen:
             records.append({
                 "title": title, "excerpt": excerpt, "url": url,
                 "source": str(item.get("source") or ("Wikipedia" if parsed.hostname == "en.wikipedia.org" else "Stack Overflow")),
@@ -917,11 +932,7 @@ def format_multi_source_attribution(evidence):
     for item in candidates:
         title = _clean_excerpt(item.get("title"))
         url = str(item.get("url") or "").strip()
-        parsed = urlparse(url)
-        if (
-            not title or url in seen or parsed.scheme != "https"
-            or parsed.hostname not in allowed_hosts
-        ):
+        if not title or url in seen or not _is_allowed_source_url(url):
             continue
         source = str(item.get("source") or (
             "Wikipedia" if parsed.hostname == "en.wikipedia.org" else "Stack Overflow"
