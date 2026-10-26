@@ -45,12 +45,45 @@ function renderServices(services) {
     finally { button.disabled = false; }
   }));
 }
+function renderProjects(projects) {
+  $("#projects").innerHTML = projects.map(project => {
+    const actions = project.available ? ["start", "restart", "stop"] : [];
+    return `<div class="inventory-row"><div><strong>${escapeHtml(project.name)}</strong><small>${escapeHtml(project.id)} · ${escapeHtml(project.state)}</small><small>${project.containers.length} container(s)</small></div><div class="inventory-actions">${actions.map(action => `<button class="action-button" data-project-id="${escapeHtml(project.id)}" data-action="${action}">${action}</button>`).join("")}<button class="action-button" data-project-logs="${escapeHtml(project.id)}" ${project.available ? "" : "disabled"}>logs</button></div></div>`;
+  }).join("");
+  document.querySelectorAll("[data-project-id]").forEach(button => button.addEventListener("click", async () => {
+    const projectId = button.dataset.projectId, action = button.dataset.action;
+    if (["stop", "restart"].includes(action) && !window.confirm(`Confirm ${action} for project ${projectId}?`)) return;
+    button.disabled = true;
+    try {
+      await api("/api/projects/action", { method: "POST", body: JSON.stringify({ projectId, action }) });
+      alert(`Requested ${action} for ${projectId}.`, "ok");
+      renderProjects((await api("/api/projects")).projects);
+    } catch (error) { alert(error.message, "error"); }
+    finally { button.disabled = false; }
+  }));
+  document.querySelectorAll("[data-project-logs]").forEach(button => button.addEventListener("click", async () => {
+    button.disabled = true;
+    try {
+      const result = await api("/api/projects/logs", { method: "POST", body: JSON.stringify({ projectId: button.dataset.projectLogs, lines: 100 }) });
+      $("#logs-output").textContent = result.output;
+    } catch (error) { $("#logs-output").textContent = error.message; }
+    finally { button.disabled = false; }
+  }));
+}
 function renderContainers(data) {
   $("#containers").innerHTML = data.available ? (data.containers.length ? data.containers.map(item => {
     const running = /^Up\b/i.test(item.status);
     const actions = running ? ["restart", "stop"] : ["start"];
-    return `<div class="inventory-row"><div><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.image)} · ${escapeHtml(item.id)}</small><small>${escapeHtml(item.status)}</small></div><div class="inventory-actions">${actions.map(action => `<button class="action-button" data-container-id="${escapeHtml(item.id)}" data-action="${action}">${action}</button>`).join("")}</div></div>`;
+    return `<div class="inventory-row"><div><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.image)} · ${escapeHtml(item.id)}</small><small>${escapeHtml(item.status)}</small></div><div class="inventory-actions">${actions.map(action => `<button class="action-button" data-container-id="${escapeHtml(item.id)}" data-action="${action}">${action}</button>`).join("")}<button class="action-button" data-container-logs="${escapeHtml(item.id)}">logs</button></div></div>`;
   }).join("") : '<p class="muted">No containers detected.</p>') : `<p class="muted">Docker inventory unavailable: ${escapeHtml(data.detail)}</p>`;
+  document.querySelectorAll("[data-container-logs]").forEach(button => button.addEventListener("click", async () => {
+    button.disabled = true;
+    try {
+      const result = await api("/api/containers/logs", { method: "POST", body: JSON.stringify({ containerId: button.dataset.containerLogs, lines: 100 }) });
+      $("#logs-output").textContent = result.output;
+    } catch (error) { $("#logs-output").textContent = error.message; }
+    finally { button.disabled = false; }
+  }));
   document.querySelectorAll("[data-container-id]").forEach(button => button.addEventListener("click", async () => {
     const containerId = button.dataset.containerId, action = button.dataset.action;
     if (!window.confirm(`Confirm ${action} for container ${containerId}?`)) return;
@@ -167,7 +200,7 @@ async function start() {
     const overview = await api("/api/overview");
     drawCards(overview.sections);
     selectView("overview");
-    const [system, serviceData, containerData, models, network] = await Promise.all([api("/api/system"), api("/api/services"), api("/api/containers"), api("/api/ai/models"), api("/api/network")]);
+    const [system, serviceData, containerData, projectData, models, network] = await Promise.all([api("/api/system"), api("/api/services"), api("/api/containers"), api("/api/projects"), api("/api/ai/models"), api("/api/network")]);
     modelCatalog = models;
     populateAiModels();
     $("#cpu-value").textContent = `${system.cpu.usagePercent}%`;
@@ -187,6 +220,7 @@ async function start() {
     $("#sampled-at").textContent = `Sampled ${new Date(system.sampledAt).toLocaleTimeString()} · interfaces: ${system.networkInterfaces.join(", ") || "none"}`;
     $("#processes").innerHTML = system.topProcesses.length ? system.topProcesses.map(proc => `<div class="process-row"><strong title="${escapeHtml(proc.name)}">${escapeHtml(proc.name)} <span style="text-align:left">#${proc.pid}</span></strong><span>CPU ${proc.cpuPercent}%</span><span>RAM ${proc.memoryPercent}%</span></div>`).join("") : '<p class="muted">Process list unavailable</p>';
     renderServices(serviceData.services);
+    renderProjects(projectData.projects);
     renderContainers(containerData);
     $("#interfaces").innerHTML = system.networkInterfaces.length ? system.networkInterfaces.map(name => `<span class="interface-chip">${escapeHtml(name)}</span>`).join("") : '<p class="muted">No active non-loopback interfaces detected.</p>';
     $("#network-traffic").innerHTML = network.available && network.interfaces.length ? network.interfaces.map(item => `<div class="network-row"><strong>${escapeHtml(item.name)}</strong><span>↓ ${escapeHtml(item.rxRate)}</span><span>↑ ${escapeHtml(item.txRate)}</span></div>`).join("") : '<p class="muted">Network throughput is unavailable on this host.</p>';
