@@ -27,6 +27,41 @@ function drawCards(sections) {
     card.addEventListener("keydown", event => { if (event.key === "Enter" || event.key === " ") selectView(card.dataset.view); });
   });
 }
+function renderServices(services) {
+  $("#services").innerHTML = services.map(service => {
+    const actions = service.state === "active" ? ["restart", "stop"] : ["start"];
+    return `<div class="inventory-row"><div><strong>${escapeHtml(service.name)}</strong><small>${escapeHtml(service.scope)} · ${escapeHtml(service.unit)}</small></div><div class="inventory-actions"><span class="state state-${escapeHtml(service.state)}">${escapeHtml(service.state)}</span>${actions.map(action => `<button class="action-button" data-service-id="${escapeHtml(service.id)}" data-action="${action}">${action}</button>`).join("")}</div></div>`;
+  }).join("");
+  document.querySelectorAll("[data-service-id]").forEach(button => button.addEventListener("click", async () => {
+    const serviceId = button.dataset.serviceId, action = button.dataset.action;
+    if (!window.confirm(`Confirm ${action} for ${serviceId}?`)) return;
+    button.disabled = true;
+    try {
+      await api("/api/services/action", { method: "POST", body: JSON.stringify({ serviceId, action }) });
+      alert(`Requested ${action} for ${serviceId}.`, "ok");
+      renderServices((await api("/api/services")).services);
+    } catch (error) { alert(error.message, "error"); }
+    finally { button.disabled = false; }
+  }));
+}
+function renderContainers(data) {
+  $("#containers").innerHTML = data.available ? (data.containers.length ? data.containers.map(item => {
+    const running = /^Up\\b/i.test(item.status);
+    const actions = running ? ["restart", "stop"] : ["start"];
+    return `<div class="inventory-row"><div><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.image)} · ${escapeHtml(item.id)}</small><small>${escapeHtml(item.status)}</small></div><div class="inventory-actions">${actions.map(action => `<button class="action-button" data-container-id="${escapeHtml(item.id)}" data-action="${action}">${action}</button>`).join("")}</div></div>`;
+  }).join("") : '<p class="muted">No containers detected.</p>') : `<p class="muted">Docker inventory unavailable: ${escapeHtml(data.detail)}</p>`;
+  document.querySelectorAll("[data-container-id]").forEach(button => button.addEventListener("click", async () => {
+    const containerId = button.dataset.containerId, action = button.dataset.action;
+    if (!window.confirm(`Confirm ${action} for container ${containerId}?`)) return;
+    button.disabled = true;
+    try {
+      await api("/api/containers/action", { method: "POST", body: JSON.stringify({ containerId, action }) });
+      alert(`Requested ${action} for container ${containerId}.`, "ok");
+      renderContainers(await api("/api/containers"));
+    } catch (error) { alert(error.message, "error"); }
+    finally { button.disabled = false; }
+  }));
+}
 function selectView(view) {
   const info = moduleInfo[view] || moduleInfo.overview;
   $("#page-title").textContent = info[0];
@@ -87,8 +122,8 @@ async function start() {
     $("#host-detail").textContent = `${system.hostname} · ${system.platform}/${system.architecture}`;
     $("#sampled-at").textContent = `Sampled ${new Date(system.sampledAt).toLocaleTimeString()} · interfaces: ${system.networkInterfaces.join(", ") || "none"}`;
     $("#processes").innerHTML = system.topProcesses.length ? system.topProcesses.map(proc => `<div class="process-row"><strong title="${escapeHtml(proc.name)}">${escapeHtml(proc.name)} <span style="text-align:left">#${proc.pid}</span></strong><span>CPU ${proc.cpuPercent}%</span><span>RAM ${proc.memoryPercent}%</span></div>`).join("") : '<p class="muted">Process list unavailable</p>';
-    $("#services").innerHTML = serviceData.services.map(service => `<div class="inventory-row"><div><strong>${escapeHtml(service.name)}</strong><small>${escapeHtml(service.scope)} · ${escapeHtml(service.unit)}</small></div><span class="state state-${escapeHtml(service.state)}">${escapeHtml(service.state)}</span></div>`).join("");
-    $("#containers").innerHTML = containerData.available ? (containerData.containers.length ? containerData.containers.map(item => `<div class="inventory-row"><div><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.image)} · ${escapeHtml(item.id)}</small></div><span class="state state-active">${escapeHtml(item.status)}</span></div>`).join("") : '<p class="muted">No running containers detected.</p>') : `<p class="muted">Docker inventory unavailable: ${escapeHtml(containerData.detail)}</p>`;
+    renderServices(serviceData.services);
+    renderContainers(containerData);
     $("#interfaces").innerHTML = system.networkInterfaces.length ? system.networkInterfaces.map(name => `<span class="interface-chip">${escapeHtml(name)}</span>`).join("") : '<p class="muted">No active non-loopback interfaces detected.</p>';
     $("#bridge-title").textContent = overview.machine.state === "connected" ? "Host metrics connected" : "Waiting for the host";
     $("#bridge-detail").textContent = overview.machine.detail;
