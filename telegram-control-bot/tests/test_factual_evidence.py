@@ -618,8 +618,8 @@ class EvidenceFormattingTests(unittest.TestCase):
 class OutputFormattingRegressionTests(unittest.TestCase):
     def test_support_warning_uses_real_line_breaks(self):
         warning = factual_evidence.format_support_warning()
-        self.assertTrue(warning.startswith("\\n\\n"))
-        self.assertNotIn(r"\\n", warning)
+        self.assertTrue(warning.startswith("\n\n"))
+        self.assertNotIn(r"\n", warning)
 
     def test_source_attribution_uses_real_line_breaks(self):
         footer = factual_evidence.format_multi_source_attribution({
@@ -628,9 +628,9 @@ class OutputFormattingRegressionTests(unittest.TestCase):
             "url": "https://en.wikipedia.org/?curid=123",
             "source": "Wikipedia article extract",
         })
-        self.assertIn("\\n\\nPotential references", footer)
-        self.assertIn("\\n• Wikipedia article extract", footer)
-        self.assertNotIn(r"\\n", footer)
+        self.assertIn("\n\nPotential references", footer)
+        self.assertIn("\n• Wikipedia article extract", footer)
+        self.assertNotIn(r"\n", footer)
 
 
 class RetrievalFailureTests(unittest.IsolatedAsyncioTestCase):
