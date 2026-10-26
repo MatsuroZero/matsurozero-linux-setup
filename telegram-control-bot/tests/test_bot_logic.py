@@ -36,6 +36,16 @@ class ArithmeticTests(unittest.TestCase):
         self.assertEqual(bot._answer_arithmetic_question(question), "9716")
         self.assertTrue(bot._is_math_primary_request(question))
 
+    def test_chatty_multiplication_returns_worked_exact_result(self):
+        answer = bot._format_math_response(
+            "What's 347 * 28, I'm too lazy to calculate it",
+            "9716",
+        )
+        self.assertEqual(
+            answer,
+            "347 × 28 = 347 × (20 + 8) = 6,940 + 2,776 = 9,716.",
+        )
+
     def test_math_primary_request_does_not_swallow_second_task(self):
         self.assertFalse(
             bot._is_math_primary_request("What's 347 * 28, and also tell me Japan's capital?")
