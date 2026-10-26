@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { assertAuthorizedDiscordUser } from "./authz.js";
 import { getSystemSnapshot, getServiceSnapshot, getContainerSnapshot, getNetworkSnapshot, getProjectSnapshot, performProjectAction, getProjectLogs, getContainerLogs, validatePowerAction, performPowerAction, performServiceAction, performContainerAction } from "./control.js";
 import { chat, getModelCatalog } from "./ai.js";
+import { getMemory, setMemoryProfile, rememberFact, forgetMemoryFacts } from "./memory.js";
 
 const ROOT = fileURLToPath(new URL("../public/", import.meta.url));
 const PORT = Number(process.env.PORT || 8787);
@@ -90,7 +91,7 @@ export function createAppServer() {
       if (req.method === "GET" && url.pathname === "/api/health") {
         return send(res, 200, { ok: true, service: "discord-control-activity", hostMetrics: "available", controlActions: "allowlisted" });
       }
-      if (req.method === "POST" && ["/api/session", "/api/logout", "/api/services/action", "/api/containers/action", "/api/projects/action", "/api/projects/logs", "/api/containers/logs", "/api/power/action", "/api/ai/chat"].includes(url.pathname) && !hasSameOrigin(req)) {
+      if (req.method === "POST" && ["/api/session", "/api/logout", "/api/services/action", "/api/containers/action", "/api/projects/action", "/api/projects/logs", "/api/containers/logs", "/api/power/action", "/api/ai/chat", "/api/ai/memory/profile", "/api/ai/memory/remember", "/api/ai/memory/forget"].includes(url.pathname) && !hasSameOrigin(req)) {
         return send(res, 403, { error: "Cross-origin request rejected" });
       }
       if (req.method === "POST" && url.pathname === "/api/session") {
@@ -121,12 +122,28 @@ export function createAppServer() {
         if (!session) return send(res, 401, { error: "Authenticate through Discord first" });
         try { assertAuthorizedDiscordUser(session.userId, process.env.DISCORD_ALLOWED_USER_ID); }
         catch { return send(res, 403, { error: "Not authorized" }); }
+        if (req.method === "GET" && url.pathname === "/api/ai/memory") {
+          return send(res, 200, await getMemory());
+        }
+        if (req.method === "POST" && url.pathname === "/api/ai/memory/profile") {
+          const { profile } = await readJson(req, 8192);
+          return send(res, 200, await setMemoryProfile(profile));
+        }
+        if (req.method === "POST" && url.pathname === "/api/ai/memory/remember") {
+          const { fact } = await readJson(req, 4096);
+          return send(res, 200, await rememberFact(fact));
+        }
+        if (req.method === "POST" && url.pathname === "/api/ai/memory/forget") {
+          const { query } = await readJson(req, 4096);
+          return send(res, 200, await forgetMemoryFacts(query));
+        }
         if (req.method === "GET" && url.pathname === "/api/ai/models") {
           return send(res, 200, await getModelCatalog());
         }
         if (req.method === "POST" && url.pathname === "/api/ai/chat") {
           const { provider, model, message } = await readJson(req, 16_384);
-          const result = await chat({ provider, model, message, history: session.history });
+          const memory = await getMemory();
+          const result = await chat({ provider, model, message, history: session.history, memory });
           session.history = result.history;
           console.info(JSON.stringify({ event: "ai_chat", userId: session.userId, provider, model, at: new Date().toISOString() }));
           return send(res, 200, { answer: result.answer });
