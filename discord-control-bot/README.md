@@ -10,8 +10,8 @@ A private Discord Activity web app for monitoring a Linux host and safely managi
 - Node.js HTTP server, health/config endpoints, Discord OAuth authorization-code exchange, Embedded App SDK authentication, and secure session cookie.
 - Server-side allowlist validation against `DISCORD_ALLOWED_USER_ID`; every private API route re-checks the authenticated session identity.
 - Read-only system metrics: sampled CPU utilization, memory, root filesystem usage, uptime, thermal-zone readings when exposed by Linux, network interface names, sampled per-interface RX/TX throughput, and top processes.
-- Read-only inventory of known Nexus systemd services and Docker containers.
-- Confirmed start/stop/restart actions for a fixed allowlist of services and containers, with server-side origin checks and per-user action cooldown. No arbitrary shell endpoint exists.
+- Read-only inventory of known Nexus systemd services and Docker containers, including systemd autostart state.
+- Confirmed start/stop/restart and enable/disable-autostart actions for a fixed allowlist of services, plus fixed Docker Compose project and container controls. Mutations use server-side origin checks and per-user action cooldown. No arbitrary shell endpoint exists.
 - Optional AI chat using Ollama on the Activity host or Gemini when `GEMINI_API_KEY` is configured. Model choices are constrained to the available Ollama tags and a fixed Gemini model allowlist; conversation history is session-only.
 - System service actions use `sudo -n` and fail closed unless the host has narrowly scoped sudo permissions. User service actions require a working user systemd session. Docker actions require Docker access for the server process.
 - Tests cover authorization, API boundaries, metric shape, inventory shape, and input validation.
