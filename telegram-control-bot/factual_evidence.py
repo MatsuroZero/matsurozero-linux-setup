@@ -253,6 +253,33 @@ def _question_requests_numeric_fact(question):
     return any(re.search(pattern, text) for pattern in patterns)
 
 
+def _requested_metric_terms(question):
+    """Return a narrow set of terms naming a quantity explicitly requested."""
+    text = " ".join(str(question or "").casefold().split())
+    match = re.search(r"\\bhow many\\s+([a-z]+)", text)
+    if match:
+        noun = match.group(1)
+        return {noun, noun.rstrip("s")}
+    match = re.search(r"\\bhow much\\s+([a-z]+)", text)
+    if match:
+        noun = match.group(1)
+        return {noun, noun.rstrip("s")}
+    if re.search(r"\\bpopulation\\b", text):
+        return {"population", "inhabitant", "inhabitants", "resident", "residents"}
+    if re.search(r"\\bwhat percent(?:age)?\\b", text):
+        return {"percent", "percentage"}
+    return set()
+
+
+def _answer_matches_requested_metric(question, answer):
+    """Reject count/amount answers that discuss a different requested property."""
+    metric_terms = _requested_metric_terms(question)
+    if not metric_terms:
+        return True
+    answer_terms = _content_tokens(answer)
+    return bool(metric_terms & answer_terms)
+
+
 def _evidence_has_required_numeric_value(question, excerpt):
     """Require a number in a sentence that mentions the requested quantity.
 
@@ -475,6 +502,13 @@ def assess_answer_support(question, answer, evidence):
         return {"status": "unavailable", "overlap": 0.0, "matched_terms": []}
 
     answer_text = str(answer or "")
+    if not _answer_matches_requested_metric(question, answer_text):
+        return {
+            "status": "insufficient_overlap",
+            "overlap": 0.0,
+            "matched_terms": [],
+            "reason": "requested_metric_not_addressed",
+        }
     records = _trusted_evidence_records(evidence)
     if not records:
         # Keep the pure support heuristic independently testable with synthetic
