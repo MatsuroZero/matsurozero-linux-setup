@@ -206,12 +206,12 @@ class MultiSourceRelevanceTests(unittest.IsolatedAsyncioTestCase):
             factual_evidence, "retrieve_stackexchange_evidence", new=AsyncMock(return_value=[])
         ):
             result = await factual_evidence._retrieve_multi_source_evidence_uncached(
-                "At what temperature does water boil?"
+                "How many moons does Planet X have?"
             )
         self.assertIsNotNone(result)
         self.assertTrue(
             factual_evidence._evidence_has_required_numeric_value(
-                "At what temperature does water boil?", result["excerpt"]
+                "How many moons does Planet X have?", result["excerpt"]
             )
         )
 
