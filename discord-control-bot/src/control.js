@@ -376,7 +376,7 @@ export async function getDoctorSnapshot() {
 }
 async function getRegistrySnapshotForDoctor() {
   try {
-    const raw = await readFile(join(os.homedir(), ".config", "nexus-control", "registry.json"), "utf8");
+    const raw = await readFile(process.env.NEXUS_REGISTRY_PATH || join(os.homedir(), ".config", "nexus-control", "registry.json"), "utf8");
     const parsed = JSON.parse(raw);
     return {
       commands: parsed.commands && typeof parsed.commands === "object" ? Object.keys(parsed.commands).length : 0,
