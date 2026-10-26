@@ -796,12 +796,12 @@ def format_support_warning(support=None):
     """Explain whether support failed because evidence conflicted or was insufficient."""
     if isinstance(support, dict) and support.get("reason") == "evidence_conflict":
         return (
-            "\\n\\n⚠️ The retrieved sources appear to disagree on a relevant detail. "
+            "\n\n⚠️ The retrieved sources appear to disagree on a relevant detail. "
             "I can't reliably resolve that disagreement from these extracts, so treat "
             "the answer as unverified."
         )
     return (
-        "\\n\\n⚠️ I found a possible reference, but the answer did not clearly match "
+        "\n\n⚠️ I found a possible reference, but the answer did not clearly match "
         "the retrieved extract. Please treat the answer as unverified."
     )
 
@@ -1143,13 +1143,13 @@ def format_multi_source_attribution(evidence):
         source = str(item.get("source") or (
             "Wikipedia" if hostname == "en.wikipedia.org" else "Stack Overflow"
         ))
-        references.append("\\n• " + source + " — " + title + "\\n" + url)
+        references.append("\n• " + source + " — " + title + "\n" + url)
         seen.add(url)
         if len(references) >= 3:
             break
     if not references:
         return ""
     return (
-        "\\n\\nPotential references (retrieved automatically; not independently verified):"
+        "\n\nPotential references (retrieved automatically; not independently verified):"
         + "".join(references)
     )
