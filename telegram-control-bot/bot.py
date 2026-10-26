@@ -853,9 +853,9 @@ def _extract_explicit_temporary_fact(session, user_text):
 
     preference = re.search(
         r"\bI\s+(?:(?:personally|really)\s+)*(love|like|enjoy|prefer|dislike|hate)\s+"
-        r"(.+?)(?=\s*,\s*|\s+(?:do you know|have you heard|what do you|what(?:'s| is)|"
-        r"it's|its|it is)\s+my\s+(?:favorite|favourite)\b|"
-        r"why|how|when|where|can you|could you|would you|tell me|i like)\b|[.!?]|$)",
+        r"(.+?)(?=\s*,\s*|\s+(?:it's|its|it is)\s+my\s+(?:favorite|favourite)\b|"
+        r"\s+(?:do you know|have you heard|what do you|what(?:'s| is)|why|how|when|where|"
+        r"can you|could you|would you|tell me|i like)\b|[.!?]|$)",
         text, flags=re.I,
     )
     if preference:
@@ -1443,7 +1443,8 @@ def _evidence_question_for_turn(user_text, prior_history):
     # instructions; retrieval still validates candidate sources and answer support.
     context = prior[-2:]
     combined = " ".join(context + [current])
-    return combined[-600:]
+    # The evidence module deliberately caps requests to keep external queries bounded.
+    return combined[:240]
 
 
 async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
