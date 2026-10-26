@@ -5,16 +5,23 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 
-function cpuUsagePercent() {
-  const cpus = os.cpus();
+function cpuTicks() {
   let idle = 0, total = 0;
-  for (const cpu of cpus) {
+  for (const cpu of os.cpus()) {
     for (const [key, value] of Object.entries(cpu.times)) {
       total += value;
       if (key === "idle") idle += value;
     }
   }
-  return total > 0 ? Math.round((1 - idle / total) * 100) : 0;
+  return { idle, total };
+}
+async function cpuUsagePercent() {
+  const before = cpuTicks();
+  await new Promise(resolve => setTimeout(resolve, 100));
+  const after = cpuTicks();
+  const total = after.total - before.total;
+  const idle = after.idle - before.idle;
+  return total > 0 ? Math.max(0, Math.min(100, Math.round((1 - idle / total) * 100))) : 0;
 }
 function formatBytes(value) {
   const units = ["B", "KB", "MB", "GB", "TB"];
@@ -55,12 +62,12 @@ export async function getSystemSnapshot() {
   const totalMemory = os.totalmem();
   const freeMemory = os.freemem();
   const networkInterfaces = os.networkInterfaces();
-  const [disk, processes] = await Promise.all([getDisk(), getTopProcesses()]);
+  const [disk, processes, usagePercent] = await Promise.all([getDisk(), getTopProcesses(), cpuUsagePercent()]);
   return {
     hostname: os.hostname(),
     platform: os.platform(),
     architecture: os.arch(),
-    cpu: { cores: os.cpus().length, usagePercent: cpuUsagePercent(), loadAverage: os.loadavg().map(value => Number(value.toFixed(2))) },
+    cpu: { cores: os.cpus().length, usagePercent, loadAverage: os.loadavg().map(value => Number(value.toFixed(2))) },
     memory: { total: formatBytes(totalMemory), free: formatBytes(freeMemory), used: formatBytes(totalMemory - freeMemory), usedPercent: Math.round((totalMemory - freeMemory) / totalMemory * 100) },
     disk,
     uptimeSeconds: Math.floor(os.uptime()),
