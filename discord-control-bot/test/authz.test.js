@@ -50,8 +50,8 @@ test("defaults to the plural environment allowlist with legacy fallback", () => 
     assert.equal(isAuthorizedDiscordUser("222222222222222222"), true);
     delete process.env.DISCORD_ALLOWED_USER_IDS;
     process.env.DISCORD_ALLOWED_USER_ID = allowed;
-    assert.equal(isAuthorizedDiscordUser(allowed), false);
-    assert.equal(isAuthorizedDiscordUser(allowed, undefined), true);
+    assert.equal(isAuthorizedDiscordUser(allowed), true);
+    assert.equal(isAuthorizedDiscordUser(Number(allowed)), false);
   } finally {
     if (previousPlural === undefined) delete process.env.DISCORD_ALLOWED_USER_IDS;
     else process.env.DISCORD_ALLOWED_USER_IDS = previousPlural;
