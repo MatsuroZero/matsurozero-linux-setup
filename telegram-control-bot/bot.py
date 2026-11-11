@@ -87,7 +87,7 @@ log = logging.getLogger("telegram-control-bot")
 def parse_allowed_user_ids(value: str) -> frozenset[int]:
     """Parse a comma/whitespace-separated Telegram user ID allowlist."""
     ids = set()
-    for item in re.split(r"[\\s,]+", value.strip()):
+    for item in re.split(r"[\s,]+", value.strip()):
         if item.isascii() and item.isdigit():
             user_id = int(item)
             if user_id > 0:
