@@ -5,7 +5,7 @@ A private Discord Activity dashboard for monitoring and controlling the Linux ho
 ## Implemented
 
 - Responsive Activity UI with Overview, System, Services, Containers, Network, AI Assistant, Dashboards, Nexus Commands, Diagnostics, and Power Controls.
-- Discord Embedded App SDK browser import, server-side OAuth code exchange, secure session cookie, and strict allowlist checks against `DISCORD_ALLOWED_USER_ID`.
+- Discord Embedded App SDK browser import, server-side OAuth code exchange, secure session cookie, and strict allowlist checks against comma-separated `DISCORD_ALLOWED_USER_IDS` (with legacy `DISCORD_ALLOWED_USER_ID` fallback).
 - Read-only CPU, memory, root disk, uptime, top processes, Linux thermal zones when exposed, network interfaces, and sampled RX/TX throughput. The Activity refreshes these metrics every 10 seconds while visible, without overlapping refreshes.
 - Fixed allowlist of systemd services, status/autostart state, start/stop/restart, and enable/disable autostart actions.
 - Fixed Docker container inventory and start/stop/restart/log actions, plus configured Compose project status/actions/logs for `odysseus`, `uptime-kuma`, and `localnexus`.
@@ -24,7 +24,7 @@ A private Discord Activity dashboard for monitoring and controlling the Linux ho
 - Activities enabled for the application.
 - User installation and private-channel contexts enabled. The provided registration script configures a user-installed Entry Point command for private channels.
 - Register the redirect URI used by the server in the Developer Portal. The sample is `https://127.0.0.1`; the server's `DISCORD_REDIRECT_URI` must match the registered value exactly.
-- Configure `DISCORD_APPLICATION_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_ALLOWED_USER_ID`, and `DISCORD_REDIRECT_URI` in the server environment.
+- Configure `DISCORD_APPLICATION_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_ALLOWED_USER_IDS`, and `DISCORD_REDIRECT_URI` in the server environment.
 - Set `LINKS_PIN` and only add dashboard credentials if you want the credential reveal feature enabled.
 
 The Entry Point registration script uses `DISCORD_BOT_TOKEN` from the server environment. The token is never sent to the browser or stored in the repository.
