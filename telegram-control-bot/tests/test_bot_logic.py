@@ -103,7 +103,7 @@ class TemporaryMemoryTests(unittest.TestCase):
 class AuthorizationTests(unittest.TestCase):
     def test_allowlist_parses_multiple_ids_and_mixed_separators(self):
         self.assertEqual(
-            bot.parse_allowed_user_ids("12345, 67890\\n24680\\t13579"),
+            bot.parse_allowed_user_ids("12345, 67890\n24680\t13579"),
             frozenset({12345, 67890, 24680, 13579}),
         )
 
