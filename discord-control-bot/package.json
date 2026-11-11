@@ -1,0 +1,18 @@
+{
+  "name": "discord-control-bot",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Discord Activity and interaction adapter for the shared Linux control system",
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "check": "node --check src/authz.js && node --check src/ai.js && node --check src/memory.js && node --check src/registry.js && node --check src/control.js && node --check src/server.js && node --check public/app.js && node --check scripts/register-entrypoint.js",
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "register:entrypoint": "node scripts/register-entrypoint.js",
+    "preflight": "bash scripts/preflight.sh"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

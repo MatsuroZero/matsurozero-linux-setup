@@ -1,0 +1,25 @@
+[Unit]
+Description=Nexus Discord Control Activity
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/Projects/matsurozero-linux-setup/discord-control-bot
+EnvironmentFile=%h/.config/discord-control-activity/env
+ExecStart=/usr/bin/node src/server.js
+Restart=on-failure
+RestartSec=3
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/Projects %h/.config/nexus-control %h/.local/share/telegram-control-bot
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+UMask=0077
+
+[Install]
+WantedBy=default.target

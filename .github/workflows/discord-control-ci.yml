@@ -5,6 +5,12 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "discord-control-bot/**"
+      - ".github/workflows/discord-control-ci.yml"
+  push:
+    branches: [main, discord-nexus-unified, discord-nexus-build]
+    paths:
+      - "discord-control-bot/**"
+      - ".github/workflows/discord-control-ci.yml"
   workflow_dispatch:
 
 permissions:
@@ -26,6 +32,6 @@ jobs:
       - name: Check JavaScript syntax
         run: npm run check
       - name: Check installer shell syntax
-        run: bash -n deploy/install-user-service.sh
+        run: bash -n deploy/install-user-service.sh scripts/preflight.sh
       - name: Run unit and API tests
         run: npm test

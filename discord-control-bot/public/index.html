@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#15131d">
+  <title>Nexus Control</title>
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <main class="app-shell">
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-mark">N</span><div><strong>NEXUS</strong><small>CONTROL DECK</small></div></div>
+      <div class="side-label">WORKSPACE</div>
+      <button class="nav active" data-view="overview"><span>◈</span> Overview</button>
+      <button class="nav" data-view="system"><span>⌁</span> System monitor</button>
+      <button class="nav" data-view="services"><span>◉</span> Services</button>
+      <button class="nav" data-view="containers"><span>▦</span> Containers</button>
+      <button class="nav" data-view="network"><span>⌘</span> Network</button>
+      <button class="nav" data-view="assistant"><span>✳</span> AI assistant</button>
+      <button class="nav" data-view="links"><span>↗</span> Dashboards</button>
+      <button class="nav" data-view="registry"><span>⌘</span> Nexus commands</button>
+      <button class="nav" data-view="diagnostics"><span>✓</span> Diagnostics</button>
+      <button class="nav" data-view="power"><span>⏻</span> Power controls</button>
+      <div class="sidebar-bottom"><span class="pulse"></span><div><strong>Private instance</strong><small>Allowlisted account only</small></div></div>
+    </aside>
+    <section class="main">
+      <header class="topbar"><div><div class="eyebrow">LINUX REMOTE OPERATIONS</div><h1 id="page-title">Overview</h1></div><div class="profile"><span class="avatar">M</span><div><strong id="user-name">Discord session</strong><small id="user-state">Checking authorization…</small></div></div></header>
+      <div class="content">
+        <section class="welcome" data-panel="overview"><div><span class="eyebrow">YOUR MACHINE, AT A GLANCE</span><h2>Welcome back.</h2><p>One cockpit for system health, services, containers, and your local AI.</p></div><div class="orb" aria-hidden="true"><span></span><i></i></div></section>
+        <div id="alert" class="alert" role="status">Connecting to Discord…</div>
+        <section class="section-head" data-panel="overview"><div><h3>Control modules</h3><p>Connected to your private workspace</p></div><span class="pill">OWNER ACCESS ONLY</span></section>
+        <div id="cards" class="cards" data-panel="overview"></div>
+        <section class="section-head metrics-heading" data-panel="system"><div><h3>Live system snapshot</h3><p id="sampled-at">Waiting for an authorized session</p></div><span class="pill">READ ONLY</span></section>
+        <div id="metrics" class="metrics" data-panel="system">
+          <article class="metric"><span>CPU USAGE</span><strong id="cpu-value">--</strong><small id="cpu-detail">Waiting for data</small><div class="meter"><i id="cpu-meter"></i></div></article>
+          <article class="metric"><span>MEMORY</span><strong id="memory-value">--</strong><small id="memory-detail">Waiting for data</small><div class="meter"><i id="memory-meter"></i></div></article>
+          <article class="metric"><span>ROOT STORAGE</span><strong id="disk-value">--</strong><small id="disk-detail">Waiting for data</small><div class="meter"><i id="disk-meter"></i></div></article>
+          <article class="metric"><span>UPTIME</span><strong id="uptime-value">--</strong><small id="host-detail">Waiting for data</small></article>
+          <article class="metric"><span>HIGHEST THERMAL SENSOR</span><strong id="temperature-value">--</strong><small id="temperature-detail">Sensor data unavailable</small></article>
+        </div>
+        <section class="process-panel" data-panel="system"><div class="section-head"><div><h3>Top processes</h3><p>Read-only snapshot from the host</p></div></div><div id="processes" class="processes"><p class="muted">Waiting for data</p></div></section>
+        <section class="data-panel" data-panel="services"><div class="section-head"><div><h3>Service health</h3><p>Known systemd services with allowlisted actions</p></div><span class="pill">ALLOWLISTED</span></div><div id="services" class="inventory"><p class="muted">Waiting for data</p></div></section>
+        <section class="data-panel" data-panel="containers"><div class="section-head"><div><h3>Running containers</h3><p>Inventory with allowlisted actions</p></div><span class="pill">ALLOWLISTED</span></div><div class="subsection-head"><strong>Compose projects</strong><span class="pill">FIXED PATHS</span></div><div id="projects" class="inventory"><p class="muted">Waiting for data</p></div><div class="subsection-head"><strong>Containers</strong><span class="pill">LIVE INVENTORY</span></div><div id="containers" class="inventory"><p class="muted">Waiting for data</p></div><section class="logs-panel"><div class="subsection-head"><strong>Recent logs</strong><span class="pill">MAX 1000 LINES</span></div><pre id="logs-output">Choose a project or container and select Logs.</pre></section></section>
+        <section class="data-panel" data-panel="network"><div class="section-head"><div><h3>Network interfaces</h3><p>Interfaces visible to the Activity host</p></div><span class="pill">LOCAL HOST</span></div><div id="interfaces" class="interface-list"><p class="muted">Waiting for data</p></div><div id="network-traffic" class="network-traffic"><p class="muted">Sampling throughput…</p></div></section>
+        <section class="data-panel" data-panel="assistant"><div class="section-head"><div><h3>AI assistant</h3><p>Ollama or Gemini, when configured on the server</p></div><span class="pill">NOT CONNECTED</span></div><div class="chat-panel">
+          <div class="chat-toolbar"><label for="ai-provider">Provider</label><select id="ai-provider"><option value="ollama">Ollama (local)</option><option value="gemini">Gemini (cloud)</option></select><label for="ai-model">Model</label><select id="ai-model" disabled><option>Loading models…</option></select></div>
+          <div id="chat-messages" class="chat-messages"><div class="chat-empty">Choose an available model to start a conversation.</div></div>
+          <form id="chat-form" class="chat-form"><textarea id="chat-input" maxlength="4000" rows="3" placeholder="Ask Nexus something…" required></textarea><button id="chat-send" class="send-button" type="submit" disabled>Send ↗</button></form>
+          <p class="chat-note">Chat history is kept in the current server session only. Profile and remembered facts are stored locally on the host and reused by both the Discord Activity and Telegram bot when they use the same memory path.</p>
+        </div>
+        <section class="memory-panel"><div class="subsection-head"><strong>Persistent memory</strong><span class="pill">SHARED WITH TELEGRAM BOT</span></div>
+          <form id="memory-profile-form" class="memory-form"><label for="memory-profile">User profile</label><textarea id="memory-profile" rows="4" maxlength="4000" placeholder="A short profile for future AI conversations"></textarea><button class="action-button" type="submit">Save profile</button></form>
+          <form id="memory-fact-form" class="memory-form"><label for="memory-fact">Remember a fact</label><div class="memory-add-row"><input id="memory-fact" maxlength="500" placeholder="A detail to remember…" required><button class="action-button" type="submit">Remember</button></div></form>
+          <div id="memory-facts" class="memory-facts"><p class="muted">Loading saved facts…</p></div>
+        </section></section>
+        <section class="data-panel" data-panel="diagnostics"><div class="section-head"><div><h3>Health checks</h3><p>Local HTTP endpoints and Docker API status.</p></div><button id="refresh-diagnostics" class="action-button" type="button">Refresh</button></div><div id="health-summary" class="chat-note">Checking endpoints…</div><div id="health-results" class="inventory"></div><div class="subsection-head"><strong>Nexus doctor</strong><span class="pill">LOCAL CHECKS</span></div><div id="doctor-results" class="inventory"></div></section>
+        <section class="data-panel" data-panel="registry"><div class="section-head"><div><h3>Saved Nexus commands</h3><p>Only commands already registered in the local Nexus registry can be run here.</p></div><span class="pill">NO SHELL INPUT</span></div><div id="registry-path" class="chat-note"></div><div class="subsection-head"><strong>Commands</strong><span class="pill">SAVED ARGV ONLY</span></div><div id="saved-commands" class="inventory"><p class="muted">Loading saved commands…</p></div><div class="subsection-head"><strong>Profiles</strong><span class="pill">ORDERED STEPS</span></div><div id="saved-profiles" class="inventory"><p class="muted">Loading saved profiles…</p></div><section class="logs-panel"><div class="subsection-head"><strong>Command output</strong><span class="pill">LAST RUN</span></div><pre id="registry-output">Select a saved command or profile to run it.</pre></section></section>
+        <section class="data-panel" data-panel="links"><div class="section-head"><div><h3>Local dashboards</h3><p>Links resolve from the device running this Activity.</p></div><span class="pill">LOCAL NETWORK</span></div><div id="dashboard-links" class="dashboard-links"><p class="muted">Loading dashboard links…</p></div><section class="memory-panel"><div class="subsection-head"><strong>Credential reveal</strong><span class="pill">PIN REQUIRED</span></div><p class="chat-note">Credentials remain hidden unless the server PIN is verified. Three incorrect attempts lock this panel for five minutes.</p><form id="links-pin-form" class="memory-form"><label for="links-pin">Credentials PIN</label><div class="memory-add-row"><input id="links-pin" type="password" maxlength="128" autocomplete="current-password" placeholder="Enter PIN" required><button class="action-button" type="submit">Reveal</button><button id="hide-credentials" class="action-button" type="button">Hide</button></div></form><div id="credential-results" class="credential-results" aria-live="polite"></div></section></section>
+        <section class="data-panel" data-panel="power"><div class="section-head"><div><h3>Power controls</h3><p>These actions affect the CachyOS host and require confirmation.</p></div><span class="pill">OWNER ONLY</span></div><div class="power-grid"><button class="power-action" data-power-action="lock"><strong>Lock session</strong><small>Lock the active desktop</small></button><button class="power-action" data-power-action="suspend"><strong>Suspend</strong><small>Put the computer to sleep</small></button><button class="power-action" data-power-action="reboot"><strong>Reboot</strong><small>Restart the computer</small></button><button class="power-action danger" data-power-action="shutdown"><strong>Shut down</strong><small>Power off the computer</small></button></div><p class="chat-note">The fixed Serpantinum command must be available to the user running this Activity. A power action can disconnect this dashboard.</p></section>
+        <section class="bridge-panel"><div class="bridge-icon">⌁</div><div class="bridge-copy"><span class="eyebrow">HOST STATUS</span><h3 id="bridge-title">Waiting for the Activity host</h3><p id="bridge-detail">Live host metrics are available. Service and container actions use fixed allowlists; AI and power controls are still pending.</p></div><span class="status-chip"><span class="pulse"></span> ALLOWLISTED</span></section>
+        <footer><span>NEXUS CONTROL <b>·</b> PRIVATE BUILD</span><button id="logout" class="quiet-button">End session ↗</button></footer>
+      </div>
+    </section>
+  </main>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
