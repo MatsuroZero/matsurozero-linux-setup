@@ -143,7 +143,7 @@ export function createAppServer() {
         const tokenData = await exchangeCode(code);
         if (typeof tokenData.access_token !== "string") return send(res, 401, { error: "Discord authorization failed" });
         const user = await discordApi("/users/@me", tokenData.access_token);
-        assertAuthorizedDiscordUser(user.id, process.env.DISCORD_ALLOWED_USER_ID);
+        assertAuthorizedDiscordUser(user.id, (process.env.DISCORD_ALLOWED_USER_IDS || process.env.DISCORD_ALLOWED_USER_ID));
         const sid = randomBytes(32).toString("base64url");
         sessions.set(sid, { userId: user.id, username: user.global_name || user.username, expiresAt: Date.now() + SESSION_TTL_MS, history: [] });
         return send(res, 200, { ok: true, access_token: tokenData.access_token, user: { id: user.id, name: user.global_name || user.username } }, {
@@ -163,7 +163,7 @@ export function createAppServer() {
       if (url.pathname.startsWith("/api/")) {
         const session = getSession(req);
         if (!session) return send(res, 401, { error: "Authenticate through Discord first" });
-        try { assertAuthorizedDiscordUser(session.userId, process.env.DISCORD_ALLOWED_USER_ID); }
+        try { assertAuthorizedDiscordUser(session.userId, (process.env.DISCORD_ALLOWED_USER_IDS || process.env.DISCORD_ALLOWED_USER_ID)); }
         catch { return send(res, 403, { error: "Not authorized" }); }
         if (req.method === "GET" && url.pathname === "/api/registry") {
           return send(res, 200, await getRegistrySnapshot());
