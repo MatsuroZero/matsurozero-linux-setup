@@ -5,6 +5,7 @@ Run from this directory with:
 """
 import sys
 import unittest
+from types import SimpleNamespace
 from pathlib import Path
 
 BOT_DIR = Path(__file__).resolve().parents[1]
@@ -97,6 +98,30 @@ class TemporaryMemoryTests(unittest.TestCase):
             "What game do I love playing?", history
         )
         self.assertEqual(answer, "You said you love playing Minecraft Java Edition.")
+
+
+class AuthorizationTests(unittest.TestCase):
+    def test_allowlist_parses_multiple_ids_and_mixed_separators(self):
+        self.assertEqual(
+            bot.parse_allowed_user_ids("12345, 67890\\n24680\\t13579"),
+            frozenset({12345, 67890, 24680, 13579}),
+        )
+
+    def test_allowlist_ignores_invalid_and_non_positive_values(self):
+        self.assertEqual(
+            bot.parse_allowed_user_ids("12345, nope, 0, -7, 67890"),
+            frozenset({12345, 67890}),
+        )
+
+    def test_authorized_accepts_any_allowlisted_user(self):
+        previous = bot.ALLOWED_USER_IDS
+        try:
+            bot.ALLOWED_USER_IDS = frozenset({12345, 67890})
+            self.assertTrue(bot.authorized(SimpleNamespace(effective_user=SimpleNamespace(id=67890))))
+            self.assertFalse(bot.authorized(SimpleNamespace(effective_user=SimpleNamespace(id=99999))))
+            self.assertFalse(bot.authorized(SimpleNamespace(effective_user=None)))
+        finally:
+            bot.ALLOWED_USER_IDS = previous
 
 
 if __name__ == "__main__":
