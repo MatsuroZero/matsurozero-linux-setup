@@ -41,7 +41,10 @@ BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")
 
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
-ALLOWED_USER_ID = os.getenv("TELEGRAM_ALLOWED_USER_ID", "").strip()
+ALLOWED_USER_IDS_RAW = os.getenv("TELEGRAM_ALLOWED_USER_IDS", "").strip()
+if not ALLOWED_USER_IDS_RAW:
+    # Backward compatibility for existing single-user installations.
+    ALLOWED_USER_IDS_RAW = os.getenv("TELEGRAM_ALLOWED_USER_ID", "").strip()
 LINKS_PIN = os.getenv("LINKS_PIN", "7171").strip()
 LINK_CREDENTIALS = {
     "🖥️ System dashboard": (
@@ -81,13 +84,23 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 log = logging.getLogger("telegram-control-bot")
 
 
+def parse_allowed_user_ids(value: str) -> frozenset[int]:
+    """Parse a comma/whitespace-separated Telegram user ID allowlist."""
+    ids = set()
+    for item in re.split(r"[\\s,]+", value.strip()):
+        if item.isascii() and item.isdigit():
+            user_id = int(item)
+            if user_id > 0:
+                ids.add(user_id)
+    return frozenset(ids)
+
+
+ALLOWED_USER_IDS = parse_allowed_user_ids(ALLOWED_USER_IDS_RAW)
+
+
 def authorized(update: Update) -> bool:
     user = update.effective_user
-    return (
-        user is not None
-        and ALLOWED_USER_ID.isdigit()
-        and user.id == int(ALLOWED_USER_ID)
-    )
+    return user is not None and user.id in ALLOWED_USER_IDS
 
 
 async def guard(update: Update) -> bool:
@@ -2469,9 +2482,11 @@ async def register_command_descriptions(application):
 def main():
     if not TOKEN:
         raise SystemExit("TELEGRAM_BOT_TOKEN is missing from .env")
-    if not ALLOWED_USER_ID.isdigit():
+    if not ALLOWED_USER_IDS:
         raise SystemExit(
-            "TELEGRAM_ALLOWED_USER_ID must be your numeric Telegram user ID"
+            "Set TELEGRAM_ALLOWED_USER_IDS to one or more numeric Telegram user IDs "
+            "(comma- or whitespace-separated), or use the legacy "
+            "TELEGRAM_ALLOWED_USER_ID variable."
         )
 
     app = Application.builder().token(TOKEN).post_init(register_command_descriptions).build()
