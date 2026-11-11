@@ -1,18 +1,31 @@
-export function isAuthorizedDiscordUser(userId, allowedUserId = process.env.DISCORD_ALLOWED_USER_ID) {
-  // Discord snowflakes are returned as strings; numeric coercion can lose precision.
-  if (typeof userId !== "string") return false;
-  if (allowedUserId === undefined || allowedUserId === null) return false;
+const SNOWFLAKE = /^\d{17,20}$/;
 
-  const candidate = String(userId).trim();
-  const allowed = String(allowedUserId).trim();
-
-  // Discord snowflakes are decimal strings. Fail closed on empty or malformed IDs.
-  if (!/^\d{17,20}$/.test(candidate) || !/^\d{17,20}$/.test(allowed)) return false;
-  return candidate === allowed;
+function normalizeAllowedIds(value) {
+  const candidates = Array.isArray(value)
+    ? value
+    : typeof value === "string"
+      ? value.split(/[\s,]+/)
+      : [];
+  return new Set(
+    candidates
+      .map(item => String(item).trim())
+      .filter(item => SNOWFLAKE.test(item)),
+  );
 }
 
-export function assertAuthorizedDiscordUser(userId, allowedUserId) {
-  if (!isAuthorizedDiscordUser(userId, allowedUserId)) {
+export function isAuthorizedDiscordUser(
+  userId,
+  allowedUserIds = process.env.DISCORD_ALLOWED_USER_IDS || process.env.DISCORD_ALLOWED_USER_ID,
+) {
+  // Discord snowflakes must stay strings to avoid numeric precision loss.
+  if (typeof userId !== "string") return false;
+  const candidate = userId.trim();
+  if (!SNOWFLAKE.test(candidate)) return false;
+  return normalizeAllowedIds(allowedUserIds).has(candidate);
+}
+
+export function assertAuthorizedDiscordUser(userId, allowedUserIds) {
+  if (!isAuthorizedDiscordUser(userId, allowedUserIds)) {
     const error = new Error("Not authorized");
     error.code = "UNAUTHORIZED";
     throw error;
