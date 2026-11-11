@@ -4,6 +4,13 @@ from fractions import Fraction
 import json
 import logging
 import httpx
+from factual_evidence import (
+    assess_answer_support,
+    format_evidence_for_prompt,
+    format_source_attribution,
+    format_support_warning,
+    retrieve_wikipedia_evidence,
+)
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Thread
 import os
@@ -34,7 +41,10 @@ BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")
 
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
-ALLOWED_USER_ID = os.getenv("TELEGRAM_ALLOWED_USER_ID", "").strip()
+ALLOWED_USER_IDS_RAW = os.getenv("TELEGRAM_ALLOWED_USER_IDS", "").strip()
+if not ALLOWED_USER_IDS_RAW:
+    # Backward compatibility for existing single-user installations.
+    ALLOWED_USER_IDS_RAW = os.getenv("TELEGRAM_ALLOWED_USER_ID", "").strip()
 LINKS_PIN = os.getenv("LINKS_PIN", "7171").strip()
 LINK_CREDENTIALS = {
     "🖥️ System dashboard": (
@@ -74,13 +84,23 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 log = logging.getLogger("telegram-control-bot")
 
 
+def parse_allowed_user_ids(value: str) -> frozenset[int]:
+    """Parse a comma/whitespace-separated Telegram user ID allowlist."""
+    ids = set()
+    for item in re.split(r"[\s,]+", value.strip()):
+        if item.isascii() and item.isdigit():
+            user_id = int(item)
+            if user_id > 0:
+                ids.add(user_id)
+    return frozenset(ids)
+
+
+ALLOWED_USER_IDS = parse_allowed_user_ids(ALLOWED_USER_IDS_RAW)
+
+
 def authorized(update: Update) -> bool:
     user = update.effective_user
-    return (
-        user is not None
-        and ALLOWED_USER_ID.isdigit()
-        and user.id == int(ALLOWED_USER_ID)
-    )
+    return user is not None and user.id in ALLOWED_USER_IDS
 
 
 async def guard(update: Update) -> bool:
@@ -520,12 +540,12 @@ def _save_ollama_memory(memory):
 
 MEMORY_CATEGORIES = {
     "identity": ("identity", "about matthew", "overview", "background", "age", "egypt", "law student"),
-    "style": ("style", "conversation", "tone", "personality", "itsuki", "spoiler", "response", "food"),
+    "style": ("style", "conversation", "tone", "personality", "itsuki", "spoiler", "response"),
     "learning": ("learning", "study", "chemistry", "physics", "law", "first principles", "obsidian", "notes"),
     "projects": ("project", "localnexus", "dashboard", "flask", "software", "coding", "repository", "github"),
     "linux": ("linux", "cachyos", "hyprland", "serpantinum", "quickshell", "desktop", "ollama", "hardware", "android", "phone", "network", "server"),
-    "gaming": ("gaming", "game", "roblox", "growtopia", "minecraft", "terraria", "stardew valley", "dead cells", "undertale", "deltarune", "hades", "factorio", "hollow knight", "vice city", "gta", "genshin", "wuthering waves", "honkai", "fortnite", "anime", "jojo", "media"),
-    "creative": ("creative", "writing", "novel", "worldbuilding", "fiction", "story", "mana", "character", "show", "shows", "series", "television", "breaking bad"),
+    "gaming": ("gaming", "game", "games", "roblox", "growtopia", "minecraft", "terraria", "stardew valley", "dead cells", "undertale", "deltarune", "hades", "factorio", "hollow knight", "vice city", "gta", "genshin", "wuthering waves", "honkai", "fortnite", "anime", "jojo", "media"),
+    "creative": ("creative", "writing", "novel", "worldbuilding", "fiction", "story", "mana", "character", "series", "television", "breaking bad"),
     "food": ("food", "eat", "eating", "meal", "recipe", "cooking", "restaurant", "hungry", "drink", "snack", "pizza", "mozzarella", "cheese"),
 }
 PROFILE_LABELS = [
@@ -539,11 +559,16 @@ PROFILE_LABELS = [
 ]
 
 def _text_categories(text):
+    """Classify text by whole terms/phrases, not accidental substrings."""
     lowered = str(text or "").casefold()
-    return {
-        category for category, words in MEMORY_CATEGORIES.items()
-        if any(word in lowered for word in words)
-    }
+    categories = set()
+    for category, words in MEMORY_CATEGORIES.items():
+        for word in words:
+            pattern = r"(?<!\w)" + re.escape(word.casefold()) + r"(?!\w)"
+            if re.search(pattern, lowered):
+                categories.add(category)
+                break
+    return categories
 
 
 def _profile_sections(profile):
@@ -695,6 +720,26 @@ def _add_temporary_fact(session, category, fact):
         return False
     existing = session.setdefault("temporary_facts", [])
     normalized = re.sub(r"[^a-z0-9]+", " ", fact.casefold()).strip()
+
+    # Singular explicit preferences should update in place instead of leaving
+    # contradictory "favorite X" facts side by side in the prompt.
+    favorite = re.match(r"^Matthew's favorite (anime|game|food|movie|show|book|song|artist) is (.+)$", fact, flags=re.I)
+    if favorite:
+        kind = favorite.group(1).casefold()
+        retained = []
+        for item in existing:
+            if not isinstance(item, dict):
+                continue
+            old_fact = str(item.get("fact", "")).strip()
+            old_favorite = re.match(
+                r"^Matthew's favorite (anime|game|food|movie|show|book|song|artist) is (.+)$",
+                old_fact, flags=re.I,
+            )
+            if old_favorite and old_favorite.group(1).casefold() == kind:
+                continue
+            retained.append(item)
+        existing[:] = retained
+
     for item in existing:
         if not isinstance(item, dict):
             continue
@@ -1143,6 +1188,21 @@ def _safe_arithmetic_value(node):
     raise ValueError("unsupported arithmetic expression")
 
 
+def _is_standalone_arithmetic_question(user_text):
+    """True only when a message contains arithmetic and no other request."""
+    text = " ".join(str(user_text or "").split()).strip()
+    if not text or len(text) > 600:
+        return False
+    pattern = (
+        r"(?:(?:what(?:'s|s|\s+is)|calculate|compute|solve)\s+)?"
+        r"[\d\s()+*/%.^\-]+[?!.]*"
+    )
+    return bool(
+        re.fullmatch(pattern, text, flags=re.I)
+        and re.search(r"[+*/%^]|//|\d\s+-", text)
+    )
+
+
 def _answer_arithmetic_question(user_text):
     """Solve a plain arithmetic message or a math question appended to other text."""
     text = " ".join(str(user_text or "").split()).strip()
@@ -1164,9 +1224,14 @@ def _answer_arithmetic_question(user_text):
     if len(expression) > 500:
         return None
     try:
-        value = _safe_arithmetic_value(ast.parse(expression, mode="eval"))
+        tree = ast.parse(expression, mode="eval")
+        # Bound parser/evaluator work as well as input length. ast.parse alone is
+        # not a resource limit for hostile or accidentally enormous expressions.
+        if sum(1 for _ in ast.walk(tree)) > 64:
+            return None
+        value = _safe_arithmetic_value(tree)
         return str(value.numerator) if value.denominator == 1 else f"{value.numerator}/{value.denominator}"
-    except (SyntaxError, ValueError, ZeroDivisionError, OverflowError):
+    except (SyntaxError, ValueError, ZeroDivisionError, OverflowError, RecursionError, MemoryError):
         return None
 
 
@@ -1188,6 +1253,7 @@ def _answer_from_recent_disclosures(user_text, prior_history):
             )
             if match:
                 game = (match.group(1) or match.group(2)).strip(" .!?")
+                game = re.sub(r"(?i)^(?:actually[:,]?|rather[:,]?|correction[:,]?)\s+", "", game)
                 if game:
                     return f"You said {game} is your favorite game."
 
@@ -1316,8 +1382,18 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     thinking_message = None
     try:
-        direct_answer = _answer_arithmetic_question(user_text)
-        if direct_answer is None:
+        arithmetic_result = _answer_arithmetic_question(user_text)
+        standalone_arithmetic = _is_standalone_arithmetic_question(user_text)
+        if arithmetic_result is not None and standalone_arithmetic:
+            session["history"] = (history + [{"role": "assistant", "content": arithmetic_result}])[-12:]
+            await message.reply_text(arithmetic_result)
+            return
+
+        # Do not let a fast path discard the non-math parts of a mixed message.
+        # Keep the verified result as a hard fact for the model, while it answers
+        # the user's other question/disclosure in the same turn.
+        direct_answer = None
+        if arithmetic_result is None:
             direct_answer = _answer_from_recent_disclosures(user_text, history[:-1])
         if direct_answer:
             session["history"] = (history + [{"role": "assistant", "content": direct_answer}])[-12:]
@@ -1335,6 +1411,21 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         # Do not start the secondary fact-extraction model before generating the
         # reply. On CPU-limited machines, concurrent Ollama requests compete for
         # the same cores and can make the user-facing response noticeably slower.
+        system_prompt = _ollama_system_prompt(user_text, session.get("temporary_facts", []))
+        # Retrieve a small external excerpt only for objective factual questions.
+        # The helper excludes personal-memory, current-events, creative, and math queries.
+        # Retrieval failure is non-fatal and never prevents a normal Ollama answer.
+        evidence = await retrieve_wikipedia_evidence(user_text)
+        evidence_prompt = format_evidence_for_prompt(evidence)
+        if evidence_prompt:
+            system_prompt += "\n\n" + evidence_prompt
+        if arithmetic_result is not None:
+            system_prompt += (
+                "\n\nVERIFIED CALCULATION: A deterministic arithmetic evaluator calculated "
+                f"the expression at the end of the user's message as {arithmetic_result}. "
+                "Include this exact result, and also answer every other part of the user's message. "
+                "Do not recalculate it or ignore the non-math content."
+            )
         async with httpx.AsyncClient(
             timeout=httpx.Timeout(OLLAMA_TIMEOUT, connect=5.0)
         ) as client:
@@ -1342,7 +1433,7 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
                 f"{OLLAMA_BASE_URL}/api/chat",
                 json={
                     "model": session["model"],
-                    "messages": [{"role": "system", "content": _ollama_system_prompt(user_text, session.get("temporary_facts", []))}] + history,
+                    "messages": [{"role": "system", "content": system_prompt}] + history,
                     "stream": False,
                     "keep_alive": "10m",
                     "think": False,
@@ -1364,6 +1455,16 @@ async def active_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             raise RuntimeError("Ollama returned no response text.")
         # Small models sometimes echo a sentence or paragraph inside one answer.
         answer = _deduplicate_answer_text(answer)
+        if evidence_prompt:
+            support = assess_answer_support(user_text, answer, evidence)
+            if support["status"] == "candidate_supported":
+                answer += format_source_attribution(evidence)
+            else:
+                # This is only a lexical overlap check, not proof of correctness.
+                # Be transparent when the generated answer doesn't visibly match
+                # the retrieved extract instead of presenting the source as support.
+                answer += format_support_warning()
+                answer += format_source_attribution(evidence)
         if CHAT_SESSIONS.get(key) is not session:
             return
 
@@ -2381,9 +2482,11 @@ async def register_command_descriptions(application):
 def main():
     if not TOKEN:
         raise SystemExit("TELEGRAM_BOT_TOKEN is missing from .env")
-    if not ALLOWED_USER_ID.isdigit():
+    if not ALLOWED_USER_IDS:
         raise SystemExit(
-            "TELEGRAM_ALLOWED_USER_ID must be your numeric Telegram user ID"
+            "Set TELEGRAM_ALLOWED_USER_IDS to one or more numeric Telegram user IDs "
+            "(comma- or whitespace-separated), or use the legacy "
+            "TELEGRAM_ALLOWED_USER_ID variable."
         )
 
     app = Application.builder().token(TOKEN).post_init(register_command_descriptions).build()
